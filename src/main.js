@@ -147,6 +147,11 @@ ipcMain.handle("sessions.list", async (_e, filter = {}) => {
         user: true,
         track: true,
         _count: { select: { laps: true } },
+        // Tempos das voltas validas pra calcular melhor/media por sessao
+        laps: {
+          where: { isValid: true, lapTime: { gt: 0 } },
+          select: { lapTime: true },
+        },
       },
       orderBy: { startedAt: "desc" },
       skip: (page - 1) * pageSize,
@@ -154,7 +159,18 @@ ipcMain.handle("sessions.list", async (_e, filter = {}) => {
     }),
     prisma.session.count({ where }),
   ]);
-  return { sessions, total, page, pageSize };
+  // Computa best/avg e remove o array gigante de laps do payload
+  const sessionsWithStats = sessions.map((s) => {
+    const times = s.laps.map((l) => l.lapTime);
+    const bestLap = times.length > 0 ? Math.min(...times) : null;
+    const avgLap =
+      times.length > 0
+        ? times.reduce((a, b) => a + b, 0) / times.length
+        : null;
+    const { laps, ...rest } = s;
+    return { ...rest, bestLap, avgLap };
+  });
+  return { sessions: sessionsWithStats, total, page, pageSize };
 });
 
 ipcMain.handle("sessions.detail", async (_e, sessionId) => {
@@ -576,7 +592,22 @@ ipcMain.handle("listagem.data", async (_e, filter = {}) => {
     dateFilter = { createdAt: { gte: start, lt: end } };
   }
 
-  const where = { session: sessionFilter, ...dateFilter };
+  // Em sort ASC por campo numerico onde 0 = "sem dado", excluimos zeros/nulls.
+  // Sem isso, voltas invalidadas (lapTime=0, sectors=0) apareceriam no topo
+  // como se fossem o "menor tempo".
+  const numericFieldsWithZeroAsMissing = new Set([
+    "lapTime",
+    "sector1",
+    "sector2",
+    "sector3",
+    "fuelUsed",
+    "tyreWearAvg",
+  ]);
+  const excludeZerosFilter =
+    dir === "asc" && numericFieldsWithZeroAsMissing.has(sort)
+      ? { [sort]: { gt: 0 } }
+      : {};
+  const where = { session: sessionFilter, ...dateFilter, ...excludeZerosFilter };
   const allowedSort = new Set([
     "createdAt",
     "lapTime",

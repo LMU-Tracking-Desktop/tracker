@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.png" alt="LMU Desktop">
+  <img src="docs/screenshots/home.png" alt="LMU Desktop">
 </p>
 
 ---

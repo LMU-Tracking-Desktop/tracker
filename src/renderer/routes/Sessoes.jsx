@@ -4,7 +4,7 @@ import TrackSelect from "../components/TrackSelect.jsx";
 import CarCell from "../components/CarCell.jsx";
 import TypeBadge from "../components/TypeBadge.jsx";
 import DeleteButton from "../components/DeleteButton.jsx";
-import { formatDateTime } from "../lib/format.js";
+import { formatDateTime, formatLapTime } from "../lib/format.js";
 
 const TYPE_OPTIONS = [
   { value: "", label: "todos os tipos" },
@@ -159,6 +159,8 @@ export default function Sessoes() {
                     <th>Classe</th>
                     <th>Tipo</th>
                     <th className="num">Voltas</th>
+                    <th className="num">Melhor</th>
+                    <th className="num">Média</th>
                     <th style={{ width: 32 }}></th>
                   </tr>
                 </thead>
@@ -186,6 +188,20 @@ export default function Sessoes() {
                         <TypeBadge type={s.type} />
                       </td>
                       <td className="num">{s._count?.laps ?? 0}</td>
+                      <td
+                        className="num"
+                        style={{
+                          color:
+                            s.bestLap != null
+                              ? "var(--accent)"
+                              : "var(--muted)",
+                        }}
+                      >
+                        {s.bestLap != null ? formatLapTime(s.bestLap) : "—"}
+                      </td>
+                      <td className="num text-muted">
+                        {s.avgLap != null ? formatLapTime(s.avgLap) : "—"}
+                      </td>
                       <td className="text-right">
                         <DeleteButton
                           label="deletar sessao"
