@@ -1,0 +1,278 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07070a;
+  --surface: #0e0e12;
+  --surface-2: #141419;
+  --foreground: #ededed;
+  --muted: #8a8a92;
+  --border: #1f1f26;
+  --accent: #ff2d2d;
+  --accent-dim: #8a1515;
+  --yellow: #ffd60a;
+  --green: #30f58a;
+  --purple: #c77dff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-yellow: var(--yellow);
+  --color-green: var(--green);
+  --color-purple: var(--purple);
+}
+
+html,
+body,
+#root {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", "Consolas", "Courier New", monospace;
+}
+
+.hairline {
+  border-color: var(--border);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chip.accent {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.chip.yellow {
+  color: var(--yellow);
+  border-color: rgba(255, 214, 10, 0.4);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+}
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+table.laps {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 12.5px;
+}
+table.laps th,
+table.laps td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+table.laps th {
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface);
+}
+table.laps tbody tr:hover {
+  background: var(--surface);
+}
+table.laps td.num,
+table.laps th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.laps tr.invalid td {
+  color: #6a6a6a;
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 45, 45, 0.5);
+}
+table.laps tr.outlier td {
+  color: #5a5a5a;
+  opacity: 0.55;
+}
+table.laps tr.outlier td.best-time,
+table.laps tr.outlier td.best-sector {
+  color: #5a5a5a;
+}
+table.laps tr.worst td.worst-col {
+  color: var(--accent);
+}
+table.laps td.best-time {
+  color: var(--purple);
+}
+table.laps td.best-sector {
+  color: var(--purple);
+}
+
+.stripe-bg {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 14px,
+    rgba(255, 45, 45, 0.08) 14px 16px
+  );
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+}
+
+.hero-mask::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(7, 7, 10, 0.1) 0%,
+    rgba(7, 7, 10, 0.55) 55%,
+    rgba(7, 7, 10, 0.95) 100%
+  );
+  pointer-events: none;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--accent);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.label {
+  display: block;
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.select,
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 13px;
+  outline: none;
+}
+.select:focus,
+.input:focus {
+  border-color: var(--accent);
+}
+
+.punch-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--yellow);
+  color: #1a1400;
+  font-weight: 700;
+  font-size: 10px;
+  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.delete-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  opacity: 0;
+  transition:
+    opacity 0.1s,
+    color 0.1s,
+    border-color 0.1s,
+    background 0.1s;
+  cursor: pointer;
+}
+table.laps tbody tr:hover .delete-btn,
+.delete-btn.always {
+  opacity: 1;
+}
+.delete-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(255, 45, 45, 0.08);
+}
+.delete-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid var(--background);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}

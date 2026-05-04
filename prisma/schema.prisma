@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+  sessions  Session[]
+}
+
+model Track {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  imageUrl  String?
+  createdAt DateTime  @default(now())
+  sessions  Session[]
+}
+
+model Car {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  imageUrl  String?
+  carClass  String?
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  trackId   String
+  track     Track    @relation(fields: [trackId], references: [id])
+  car       String
+  carClass  String
+  type      String
+  startedAt DateTime @default(now())
+  laps      Lap[]
+
+  @@index([userId])
+  @@index([trackId])
+}
+
+model ImportedLap {
+  id                String   @id @default(cuid())
+  ownerName         String
+  trackName         String
+  car               String
+  carClass          String
+  type              String
+  lapNumber         Int
+  lapTime           Float
+  isValid           Boolean
+  sector1           Float?
+  sector2           Float?
+  sector3           Float?
+  fuelUsed          Float
+  fuelRemaining     Float
+  fuelCapacity      Float
+  tyreWearAvg       Float?
+  position          Int?
+  hasTouch          Boolean  @default(false)
+  telemetryJson     String?
+  originalCreatedAt DateTime
+  importedAt        DateTime @default(now())
+
+  @@index([trackName, carClass])
+}
+
+model Lap {
+  id            String   @id @default(cuid())
+  sessionId     String
+  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lapNumber     Int
+  lapTime       Float
+  isValid       Boolean
+  sector1       Float?
+  sector2       Float?
+  sector3       Float?
+  fuelUsed      Float
+  fuelRemaining Float
+  fuelCapacity  Float
+  energyUsed    Float?
+  tyreWearAvg   Float?
+  position      Int?
+  hasTouch      Boolean  @default(false)
+  telemetryJson String?
+  createdAt     DateTime @default(now())
+
+  @@unique([sessionId, lapNumber])
+  @@index([sessionId])
+}

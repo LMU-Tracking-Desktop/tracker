@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Lap" ADD COLUMN "hasTouch" BOOLEAN NOT NULL DEFAULT false;

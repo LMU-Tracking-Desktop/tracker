@@ -1,0 +1,57 @@
+{
+  "name": "lmu-desktop",
+  "productName": "lmu-desktop",
+  "version": "1.0.18",
+  "description": "Le Mans Ultimate lap telemetry desktop app",
+  "main": ".vite/build/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "icon": "node scripts/gen-icon.js",
+    "prepackage": "npm run icon",
+    "premake": "npm run icon",
+    "lint": "echo \"No linting configured\""
+  },
+  "keywords": [],
+  "author": {
+    "name": "Giuseppe Gabriel",
+    "email": "giuseppegabriel4@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.7.0",
+    "@prisma/client": "^7.7.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.0",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.4.2",
+    "electron-squirrel-startup": "^1.0.1",
+    "koffi": "^2.16.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.14.1",
+    "recharts": "^3.8.1",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "41.2.1",
+    "png-to-ico": "^3.0.1",
+    "prisma": "^7.7.0",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.8"
+  }
+}
