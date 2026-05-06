@@ -11,7 +11,53 @@ import TrackMap from "../components/TrackMap.jsx";
 import ChannelChart from "../components/ChannelChart.jsx";
 import ImportLapModal from "../components/ImportLapModal.jsx";
 import CopyLapButton from "../components/CopyLapButton.jsx";
+import BestInRangePanel from "../components/BestInRangePanel.jsx";
+import LapPickerModal from "../components/LapPickerModal.jsx";
 import { downsample, distanceAtTime } from "../lib/telemetry.js";
+
+function fmtLapTime(t) {
+  if (t == null || t <= 0) return "sem tempo";
+  const m = Math.floor(t / 60);
+  const s = (t % 60).toFixed(3).padStart(6, "0");
+  return `${m}:${s}`;
+}
+
+function describeLap({ lapId, sessionLaps, otherLaps, importedLaps }) {
+  if (!lapId) return "— escolher —";
+  if (typeof lapId === "string" && lapId.startsWith("imp:")) {
+    const id = lapId.slice(4);
+    const l = importedLaps?.find((x) => x.id === id);
+    if (!l) return "importada";
+    return `${l.ownerName} · ${fmtLapTime(l.lapTime)}`;
+  }
+  const sess = sessionLaps?.find((x) => x.id === lapId);
+  if (sess) return `Volta ${sess.lapNumber} · ${fmtLapTime(sess.lapTime)}`;
+  const other = otherLaps?.find((x) => x.id === lapId);
+  if (other) {
+    const car = (other.session?.car || "").split(" ")[0];
+    return `${fmtLapTime(other.lapTime)} · ${car}`;
+  }
+  return "—";
+}
+
+function LapPickerButton({ label, text, onClick }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="mono text-[10px] tracking-[0.2em] text-muted">
+        {label}
+      </span>
+      <button
+        type="button"
+        className="btn"
+        onClick={onClick}
+        style={{ minWidth: 220, justifyContent: "flex-start", textAlign: "left" }}
+      >
+        {text}
+        <span className="ml-2 text-muted">▾</span>
+      </button>
+    </label>
+  );
+}
 
 export default function Telemetria() {
   const { sessionId } = useParams();
@@ -55,6 +101,8 @@ export default function Telemetria() {
   const [otherLaps, setOtherLaps] = useState([]);
   const [importedLaps, setImportedLaps] = useState([]);
   const [showImport, setShowImport] = useState(false);
+  const [showBestInRange, setShowBestInRange] = useState(false);
+  const [pickerMode, setPickerMode] = useState(null); // null | "primary" | "reference"
 
   // Load session data (uma vez — nao precisa polling aqui)
   useEffect(() => {
@@ -225,97 +273,33 @@ export default function Telemetria() {
           </div>
         </div>
 
-        {/* Selects + importar */}
+        {/* Pickers + importar */}
         <div className="flex items-center justify-between gap-3 flex-wrap border hairline p-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-2">
-              <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                VOLTA
-              </span>
-              <select
-                className="select"
-                style={{ width: "auto", minWidth: 240 }}
-                value={selectedLapId || ""}
-                onChange={(e) => setSelectedLapId(e.target.value || null)}
-              >
-                <option value="">—</option>
-                {data.laps
-                  .filter((l) => l.hasTelemetry)
-                  .map((l) => {
-                    const mins = Math.floor(l.lapTime / 60);
-                    const secs = (l.lapTime % 60).toFixed(3).padStart(6, "0");
-                    const timeStr =
-                      l.lapTime > 0 ? `${mins}:${secs}` : "sem tempo";
-                    return (
-                      <option key={l.id} value={l.id}>
-                        Volta {l.lapNumber} · {timeStr}
-                        {!l.isValid ? " (INV)" : ""}
-                      </option>
-                    );
-                  })}
-              </select>
-            </label>
-            <label className="flex items-center gap-2">
-              <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                COMPARAR COM
-              </span>
-              <select
-                className="select"
-                style={{ width: "auto", minWidth: 260 }}
-                value={referenceLapId || ""}
-                onChange={(e) => setReferenceLapId(e.target.value || null)}
-              >
-                <option value="">— nenhuma —</option>
-                <optgroup label="Desta sessao">
-                  {data.laps
-                    .filter((l) => l.hasTelemetry && l.id !== selectedLapId)
-                    .map((l) => {
-                      const mins = Math.floor(l.lapTime / 60);
-                      const secs = (l.lapTime % 60).toFixed(3).padStart(6, "0");
-                      const timeStr =
-                        l.lapTime > 0 ? `${mins}:${secs}` : "sem tempo";
-                      return (
-                        <option key={l.id} value={l.id}>
-                          Volta {l.lapNumber} · {timeStr}
-                          {!l.isValid ? " (INV)" : ""}
-                        </option>
-                      );
-                    })}
-                </optgroup>
-                {otherLaps.length > 0 && (
-                  <optgroup label="Top outras sessoes (mesma pista/classe)">
-                    {otherLaps.map((l) => {
-                      const mins = Math.floor(l.lapTime / 60);
-                      const secs = (l.lapTime % 60).toFixed(3).padStart(6, "0");
-                      const date = new Date(
-                        l.session.startedAt
-                      ).toLocaleDateString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                      });
-                      return (
-                        <option key={l.id} value={l.id}>
-                          {mins}:{secs} · {l.session.car.split(" ")[0]} · {date}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                )}
-                {importedLaps.length > 0 && (
-                  <optgroup label="Importadas">
-                    {importedLaps.map((l) => {
-                      const mins = Math.floor(l.lapTime / 60);
-                      const secs = (l.lapTime % 60).toFixed(3).padStart(6, "0");
-                      return (
-                        <option key={`imp:${l.id}`} value={`imp:${l.id}`}>
-                          {mins}:{secs} · {l.ownerName} · {l.car.split(" ")[0]}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                )}
-              </select>
-            </label>
+            <LapPickerButton
+              label="VOLTA"
+              onClick={() => setPickerMode("primary")}
+              text={describeLap({
+                lapId: selectedLapId,
+                sessionLaps: data.laps,
+                otherLaps,
+                importedLaps,
+              })}
+            />
+            <LapPickerButton
+              label="COMPARAR COM"
+              onClick={() => setPickerMode("reference")}
+              text={
+                referenceLapId
+                  ? describeLap({
+                      lapId: referenceLapId,
+                      sessionLaps: data.laps,
+                      otherLaps,
+                      importedLaps,
+                    })
+                  : "— nenhuma —"
+              }
+            />
             <button
               type="button"
               className="btn"
@@ -369,13 +353,24 @@ export default function Telemetria() {
                     ZOOM · {Math.round(zoomRange[0])}m →{" "}
                     {Math.round(zoomRange[1])}m
                   </span>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setZoomRange(null)}
-                  >
-                    RESET ZOOM
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => setShowBestInRange(true)}
+                      title="Voltas mais rapidas neste trecho da pista"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      🔍 MELHORES NESTE TRECHO
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => setZoomRange(null)}
+                    >
+                      RESET ZOOM
+                    </button>
+                  </div>
                 </div>
               )}
               {referenceDs && !loadingRef && (
@@ -499,6 +494,35 @@ export default function Telemetria() {
         open={showImport}
         onClose={() => setShowImport(false)}
         onImported={loadImported}
+      />
+
+      <BestInRangePanel
+        open={showBestInRange}
+        onClose={() => setShowBestInRange(false)}
+        range={zoomRange}
+        currentLapId={selectedLapId}
+        currentTelemetry={telemetry}
+        sessionLaps={data?.laps || []}
+        otherLaps={otherLaps}
+        importedLaps={importedLaps}
+        onSelect={(id) => setReferenceLapId(id)}
+      />
+
+      <LapPickerModal
+        open={pickerMode != null}
+        onClose={() => setPickerMode(null)}
+        mode={pickerMode || "primary"}
+        sessionLaps={data?.laps || []}
+        otherLaps={otherLaps}
+        importedLaps={importedLaps}
+        selectedLapId={
+          pickerMode === "reference" ? referenceLapId : selectedLapId
+        }
+        excludeLapId={pickerMode === "reference" ? selectedLapId : null}
+        onSelect={(id) => {
+          if (pickerMode === "primary") setSelectedLapId(id);
+          else setReferenceLapId(id);
+        }}
       />
     </div>
   );

@@ -243,6 +243,9 @@ ipcMain.handle(
         id: true,
         lapNumber: true,
         lapTime: true,
+        sector1: true,
+        sector2: true,
+        sector3: true,
         createdAt: true,
         session: {
           select: {
@@ -401,6 +404,10 @@ ipcMain.handle(
         type: true,
         lapTime: true,
         lapNumber: true,
+        sector1: true,
+        sector2: true,
+        sector3: true,
+        isValid: true,
         importedAt: true,
       },
     });

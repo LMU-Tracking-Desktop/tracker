@@ -22,6 +22,40 @@ export function distanceAtTime(samples, t) {
   return samples[samples.length - 1].d;
 }
 
+// Tempo (s) em que o piloto cruzou a distancia `d`. Interpola linearmente.
+export function timeAtDistance(samples, d) {
+  if (!samples || samples.length === 0 || d == null) return null;
+  if (d <= samples[0].d) return samples[0].t;
+  if (d >= samples[samples.length - 1].d) return samples[samples.length - 1].t;
+  let lo = 0;
+  let hi = samples.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].d <= d) lo = mid;
+    else hi = mid;
+  }
+  const a = samples[lo];
+  const b = samples[hi];
+  if (b.d === a.d) return a.t;
+  const frac = (d - a.d) / (b.d - a.d);
+  return a.t + frac * (b.t - a.t);
+}
+
+// Tempo gasto entre as distancias d1 e d2 (mini-setor arbitrario).
+// Retorna null se a volta nao cobre o intervalo todo.
+export function timeInRange(samples, d1, d2) {
+  if (!samples || samples.length < 2) return null;
+  const lo = Math.min(d1, d2);
+  const hi = Math.max(d1, d2);
+  // Volta precisa cobrir todo o range — senao a comparacao nao e justa
+  if (samples[0].d > lo + 1) return null;
+  if (samples[samples.length - 1].d < hi - 1) return null;
+  const t1 = timeAtDistance(samples, lo);
+  const t2 = timeAtDistance(samples, hi);
+  if (t1 == null || t2 == null) return null;
+  return t2 - t1;
+}
+
 // Reduz `samples` pra no maximo `maxPoints` via subsampling uniforme.
 // Preserva o primeiro e o ultimo sample sempre.
 export function downsample(samples, maxPoints) {
