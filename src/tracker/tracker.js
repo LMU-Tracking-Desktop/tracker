@@ -260,11 +260,13 @@ async function runTracker({ cfg, prisma, log, shouldStop, onStatus }) {
     if (snap.telemetry) lastTelemetry = snap.telemetry;
     const playerTelem = snap.telemetry || lastTelemetry;
 
-    if (waitingForLmu) {
+    // So consideramos "conectado" quando ja temos player carregado.
+    // LMU_Data existe mesmo com LMU no menu — mas sem player decode falha.
+    if (waitingForLmu && snap.player) {
       log("[OK] LMU conectado!");
       const p0 = snap.player;
       log(
-        `[INIT] estado inicial: mTotalLaps=${p0?.mTotalLaps ?? "?"} mLapDist=${p0?.mLapDist?.toFixed?.(1) ?? "?"}m inRealtime=${snap.scoring?.mInRealtime}`
+        `[INIT] estado inicial: mTotalLaps=${p0.mTotalLaps} mLapDist=${p0.mLapDist?.toFixed?.(1) ?? "?"}m track="${snap.scoring?.mTrackName}"`
       );
       waitingForLmu = false;
       emitStatus(true);
