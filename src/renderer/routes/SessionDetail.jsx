@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import TypeBadge from "../components/TypeBadge.jsx";
 import SessionLapsTable from "../components/SessionLapsTable.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import {
   LapTimeChart,
   PositionChart,
@@ -12,40 +13,128 @@ import { formatLapTime, formatDateTime } from "../lib/format.js";
 import { stats } from "../lib/stats.js";
 import { computeOutlierSet } from "../lib/outlier.js";
 
-function MetricCell({ label, value, accent }) {
+function StatCell({ label, value, color, hint }) {
   return (
     <div
-      className="p-5 border-r border-b hairline last:border-r-0 flex flex-col gap-2"
-      style={{ background: "var(--surface)" }}
+      style={{
+        background: "var(--bg-1)",
+        padding: "var(--pad)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        borderRight: "1px solid var(--bd-0)",
+        borderBottom: "1px solid var(--bd-0)",
+      }}
     >
-      <span className="mono text-[10px] tracking-[0.18em] text-muted">
+      <span
+        className="mono"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+          textTransform: "uppercase",
+        }}
+      >
         {label}
       </span>
       <span
-        className="mono text-xl md:text-2xl font-semibold tabular-nums"
-        style={{ color: accent ? "var(--accent)" : "var(--foreground)" }}
+        className="mono"
+        style={{
+          fontSize: 22,
+          fontWeight: 600,
+          color: color || "var(--tx-0)",
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
       >
         {value}
       </span>
+      {hint && (
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-2)",
+            textTransform: "uppercase",
+          }}
+        >
+          {hint}
+        </span>
+      )}
     </div>
   );
 }
 
-function Thumb({ imageUrl, alt, fallback }) {
+function StatCard({ label, value, color, hint }) {
   return (
     <div
-      className="w-12 h-12 border hairline overflow-hidden shrink-0 flex items-center justify-center"
-      style={{ background: "var(--surface-2)" }}
-      title={fallback}
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        padding: "var(--pad)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        minHeight: 92,
+      }}
     >
-      {imageUrl ? (
-        <img src={imageUrl} alt={alt} className="w-full h-full object-cover" />
-      ) : (
-        <span className="mono text-[10px] text-muted">
-          {fallback.slice(0, 2).toUpperCase()}
+      <span
+        className="mono"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mono"
+        style={{
+          fontSize: 24,
+          fontWeight: 600,
+          color: color || "var(--tx-0)",
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </span>
+      {hint && (
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-2)",
+            textTransform: "uppercase",
+          }}
+        >
+          {hint}
         </span>
       )}
     </div>
+  );
+}
+
+function ClassPill({ cls }) {
+  if (!cls) return null;
+  return (
+    <span
+      className="mono"
+      style={{
+        padding: "3px 8px",
+        fontSize: 9,
+        letterSpacing: "0.16em",
+        border: "1px solid var(--bd-1)",
+        color: "var(--tx-1)",
+        textTransform: "uppercase",
+      }}
+    >
+      {cls}
+    </span>
   );
 }
 
@@ -55,7 +144,6 @@ export default function SessionDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  // selectedLapId e referenceLapId persistidos na URL — propagam pra Telemetria/Replay
   const selectedLapId = searchParams.get("lap");
   const referenceLapId = searchParams.get("ref");
   const setSelectedLapId = (id) => {
@@ -77,7 +165,6 @@ export default function SessionDetail() {
     });
   }, []);
 
-  // Auto-seleciona a melhor volta com telemetria (pra URL do botao VER GRAFICOS)
   useEffect(() => {
     if (!data?.laps || selectedLapId) return;
     const withTelemetry = data.laps.filter((l) => l.hasTelemetry && l.isValid);
@@ -121,31 +208,79 @@ export default function SessionDetail() {
     };
   }, [sessionId]);
 
+  const emptyBox = (label) => (
+    <div
+      style={{
+        border: "1px solid var(--bd-0)",
+        background: "var(--bg-1)",
+        padding: "48px var(--pad)",
+        textAlign: "center",
+        margin: "var(--pad)",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-          CARREGANDO...
-        </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          overflow: "auto",
+        }}
+      >
+        <PageHeader
+          crumbs={[
+            { label: "SESSÕES", onClick: () => navigate("/sessoes") },
+            { label: "..." },
+          ]}
+        />
+        {emptyBox("CARREGANDO...")}
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="p-8">
-        <div className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-          SESSAO NAO ENCONTRADA
-        </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          overflow: "auto",
+        }}
+      >
+        <PageHeader
+          crumbs={[
+            { label: "SESSÕES", onClick: () => navigate("/sessoes") },
+            { label: "NÃO ENCONTRADA" },
+          ]}
+        />
+        {emptyBox("SESSÃO NÃO ENCONTRADA")}
       </div>
     );
   }
 
   const { session, laps, car } = data;
 
-  // Outliers: laps muito mais lentas que a mediana (so em nao-corrida)
   const outlierSet = computeOutlierSet(
-    laps.map((l) => ({ ...l, session: { type: session.type }, sessionId: session.id })),
+    laps.map((l) => ({
+      ...l,
+      session: { type: session.type },
+      sessionId: session.id,
+    })),
     outlierPct
   );
 
@@ -158,13 +293,11 @@ export default function SessionDetail() {
     nonOutlierValid.find((l) => l.lapTime === s?.min)?.id ?? null;
   const worstLapId =
     s && s.max !== s.min
-      ? (nonOutlierValid.find((l) => l.lapTime === s.max)?.id ?? null)
+      ? nonOutlierValid.find((l) => l.lapTime === s.max)?.id ?? null
       : null;
 
   const bestSectorOf = (key) => {
-    const vals = nonOutlierValid
-      .map((l) => l[key])
-      .filter((v) => v != null);
+    const vals = nonOutlierValid.map((l) => l[key]).filter((v) => v != null);
     return vals.length > 0 ? Math.min(...vals) : null;
   };
   const bestS1 = bestSectorOf("sector1");
@@ -179,179 +312,358 @@ export default function SessionDetail() {
   const finalTyre =
     [...laps].reverse().find((l) => l.tyreWearAvg != null)?.tyreWearAvg ?? null;
   const hasPosition = laps.some((l) => l.position != null);
+  const hasTelemetry = laps.some((l) => l.hasTelemetry);
+
+  const goTelemetry = () => {
+    const q = [];
+    if (selectedLapId) q.push(`lap=${encodeURIComponent(selectedLapId)}`);
+    if (referenceLapId) q.push(`ref=${encodeURIComponent(referenceLapId)}`);
+    const qs = q.length ? `?${q.join("&")}` : "";
+    navigate(`/sessoes/${sessionId}/telemetria${qs}`);
+  };
 
   return (
-    <div className="p-8">
-      <div className="max-w-[1400px] mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <Link
-            to="/sessoes"
-            className="mono text-[10px] tracking-[0.2em] text-muted hover:text-accent"
-          >
-            ← TODAS AS SESSOES
-          </Link>
-          {data.laps.some((l) => l.hasTelemetry) && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                const q = [];
-                if (selectedLapId)
-                  q.push(`lap=${encodeURIComponent(selectedLapId)}`);
-                if (referenceLapId)
-                  q.push(`ref=${encodeURIComponent(referenceLapId)}`);
-                const qs = q.length ? `?${q.join("&")}` : "";
-                navigate(`/sessoes/${sessionId}/telemetria${qs}`);
-              }}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[
+          { label: "SESSÕES", onClick: () => navigate("/sessoes") },
+          { label: session.track.name },
+        ]}
+        actions={
+          <div style={{ display: "flex", gap: 6 }}>
+            {hasTelemetry && (
+              <button
+                type="button"
+                className="btn solid"
+                onClick={goTelemetry}
+              >
+                VER GRÁFICOS →
+              </button>
+            )}
+          </div>
+        }
+      />
+
+      {/* Header card: info + 4 stats */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.4fr 1fr",
+          gap: "var(--gap)",
+          padding: "var(--pad)",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--bg-1)",
+            border: "1px solid var(--bd-0)",
+            padding: "var(--pad)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <TypeBadge type={session.type} />
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: "var(--tx-3)",
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {formatDateTime(session.startedAt)}
+              </span>
+            </div>
+            <div
               style={{
-                color: "var(--accent)",
-                borderColor: "var(--accent)",
+                fontSize: 32,
+                fontWeight: 600,
+                letterSpacing: "-0.02em",
+                lineHeight: 1.05,
               }}
             >
-              📊 VER GRÁFICOS →
-            </button>
-          )}
-        </div>
-
-        <section className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-0 border hairline">
+              {session.track.name}
+            </div>
+          </div>
           <div
-            className="p-5 border-r hairline flex flex-col gap-4 justify-between"
-            style={{ background: "var(--surface)" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
           >
-            <div className="space-y-2">
-              <TypeBadge type={session.type} />
-              <h1 className="text-3xl font-bold leading-tight">
-                {session.track.name}
-              </h1>
-              <div className="mono text-[11px] tracking-widest text-muted">
-                {formatDateTime(session.startedAt)}
-              </div>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <Thumb
-                imageUrl={session.track.imageUrl}
-                alt="pista"
-                fallback={session.track.name}
-              />
-              <Thumb
-                imageUrl={car?.imageUrl}
-                alt="carro"
-                fallback={session.car}
-              />
-              <div className="space-y-0.5">
-                <div className="mono text-[10px] tracking-widest text-muted">
-                  {session.car}
-                </div>
-                <div className="mono text-[10px] tracking-widest text-muted">
-                  {session.carClass}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2">
-            <MetricCell
-              label="MELHOR VOLTA"
-              value={s ? formatLapTime(s.min) : "--"}
-              accent
-            />
-            <MetricCell
-              label="MEDIA"
-              value={s ? formatLapTime(s.median) : "--"}
-            />
-            <MetricCell
-              label="VALIDAS"
-              value={String(validTimes.length).padStart(2, "0")}
-            />
-            <MetricCell
-              label="INVALIDAS"
-              value={String(totalInvalids).padStart(2, "0")}
-              accent={totalInvalids > laps.length * 0.15}
-            />
-          </div>
-        </section>
-
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-0 border hairline">
-          <MetricCell
-            label="σ CONSISTENCIA"
-            value={s ? `${s.stdDev.toFixed(2)}s` : "--"}
-          />
-          <MetricCell
-            label="COMBUSTIVEL USADO"
-            value={totalFuelUsed > 0 ? `${totalFuelUsed.toFixed(1)}L` : "--"}
-          />
-          <MetricCell
-            label="PNEU FINAL"
-            value={
-              finalTyre != null ? `${(finalTyre * 100).toFixed(1)}%` : "--"
-            }
-          />
-          <MetricCell
-            label={hasPosition ? "POSICAO INICIAL → FINAL" : "VOLTAS"}
-            value={
-              hasPosition && firstPosition != null && lastPosition != null
-                ? `P${firstPosition} → P${lastPosition}`
-                : String(laps.length).padStart(2, "0")
-            }
-            accent={
-              hasPosition &&
-              firstPosition != null &&
-              lastPosition != null &&
-              lastPosition < firstPosition
-            }
-          />
-        </section>
-
-        {laps.length > 0 && (
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <LapTimeChart
-              data={laps.map((l) => ({
-                lap: l.lapNumber,
-                valid: l.isValid ? l.lapTime : null,
-                invalid: l.isValid ? null : l.lapTime,
-                touch: l.hasTouch && l.isValid ? l.lapTime : null,
-              }))}
-              avg={s?.mean ?? null}
-            />
-            {hasPosition && (
-              <PositionChart
-                data={laps.map((l) => ({
-                  lap: l.lapNumber,
-                  position: l.position,
-                }))}
+            {car?.imageUrl && (
+              <img
+                src={car.imageUrl}
+                alt=""
+                style={{
+                  width: 44,
+                  height: 44,
+                  objectFit: "cover",
+                  border: "1px solid var(--bd-1)",
+                  flexShrink: 0,
+                }}
               />
             )}
+            <span
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: "var(--tx-1)",
+                padding: "5px 9px",
+                border: "1px solid var(--bd-1)",
+                letterSpacing: "0.06em",
+              }}
+            >
+              {session.car}
+            </span>
+            <ClassPill cls={session.carClass} />
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            border: "1px solid var(--bd-0)",
+            background: "var(--bg-1)",
+          }}
+        >
+          <StatCell
+            label="Melhor Volta"
+            value={s ? formatLapTime(s.min) : "—"}
+            color="var(--speed)"
+            hint={
+              s && bestLapId
+                ? `VOLTA ${
+                    laps.find((l) => l.id === bestLapId)?.lapNumber ?? ""
+                  }`
+                : ""
+            }
+          />
+          <StatCell
+            label="Média"
+            value={s ? formatLapTime(s.median) : "—"}
+            hint={
+              s ? `Δ +${(s.median - s.min).toFixed(2)}s` : ""
+            }
+          />
+          <StatCell
+            label="Válidas"
+            value={String(validTimes.length).padStart(2, "0")}
+            hint={`${laps.length} VOLTAS`}
+          />
+          <StatCell
+            label="Inválidas"
+            value={String(totalInvalids).padStart(2, "0")}
+            color={
+              totalInvalids > laps.length * 0.15 ? "var(--crit)" : undefined
+            }
+            hint={`${laps.filter((l) => l.hasTouch).length} TOQUES`}
+          />
+        </div>
+      </div>
+
+      {/* Secondary stats row */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: "var(--gap)",
+          padding: "0 var(--pad) var(--pad)",
+        }}
+      >
+        <StatCard
+          label="σ Consistência"
+          value={s ? `${s.stdDev.toFixed(2)}s` : "—"}
+          color={
+            s == null
+              ? "var(--tx-3)"
+              : s.stdDev < 1
+              ? "var(--ok)"
+              : s.stdDev < 2
+              ? "var(--tx-0)"
+              : "var(--crit)"
+          }
+          hint={
+            s == null
+              ? ""
+              : s.stdDev < 1
+              ? "Excelente"
+              : s.stdDev < 2
+              ? "Boa"
+              : "Instável"
+          }
+        />
+        <StatCard
+          label="Combustível Usado"
+          value={totalFuelUsed > 0 ? `${totalFuelUsed.toFixed(1)}L` : "—"}
+          hint={
+            totalFuelUsed > 0 && laps.length > 0
+              ? `MÉDIA ${(totalFuelUsed / laps.length).toFixed(2)}L/VOLTA`
+              : ""
+          }
+        />
+        <StatCard
+          label="Pneu Final"
+          value={
+            finalTyre != null ? `${(finalTyre * 100).toFixed(1)}%` : "—"
+          }
+          color={
+            finalTyre == null
+              ? undefined
+              : finalTyre > 0.9
+              ? "var(--ok)"
+              : finalTyre > 0.8
+              ? "var(--warn)"
+              : "var(--crit)"
+          }
+          hint={
+            finalTyre == null
+              ? ""
+              : finalTyre > 0.9
+              ? "OK"
+              : finalTyre > 0.8
+              ? "Desgaste normal"
+              : "Alto desgaste"
+          }
+        />
+        <StatCard
+          label={hasPosition ? "Posição Inicial → Final" : "Voltas"}
+          value={
+            hasPosition && firstPosition != null && lastPosition != null
+              ? `P${firstPosition} → P${lastPosition}`
+              : String(laps.length).padStart(2, "0")
+          }
+          color={
+            hasPosition &&
+            firstPosition != null &&
+            lastPosition != null &&
+            lastPosition < firstPosition
+              ? "var(--ok)"
+              : hasPosition &&
+                firstPosition != null &&
+                lastPosition != null &&
+                lastPosition > firstPosition
+              ? "var(--crit)"
+              : undefined
+          }
+          hint={hasPosition ? "Lap-by-lap" : "Total"}
+        />
+      </div>
+
+      {/* Charts */}
+      {laps.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "var(--gap)",
+            padding: "0 var(--pad) var(--pad)",
+          }}
+        >
+          <LapTimeChart
+            data={laps.map((l) => ({
+              lap: l.lapNumber,
+              valid: l.isValid ? l.lapTime : null,
+              invalid: l.isValid ? null : l.lapTime,
+              touch: l.hasTouch && l.isValid ? l.lapTime : null,
+            }))}
+            avg={s?.mean ?? null}
+            best={s?.min ?? null}
+          />
+          {hasPosition ? (
+            <PositionChart
+              data={laps.map((l) => ({
+                lap: l.lapNumber,
+                position: l.position,
+              }))}
+            />
+          ) : (
             <TyreWearChart
               data={laps.map((l) => ({
                 lap: l.lapNumber,
                 tyre: l.tyreWearAvg,
               }))}
             />
-            <FuelChart
+          )}
+          {hasPosition && (
+            <TyreWearChart
               data={laps.map((l) => ({
                 lap: l.lapNumber,
-                fuelRemaining: l.fuelRemaining,
-                fuelUsed: l.fuelUsed,
+                tyre: l.tyreWearAvg,
               }))}
-              capacity={laps[0]?.fuelCapacity ?? 0}
             />
-          </section>
-        )}
+          )}
+          <FuelChart
+            data={laps.map((l) => ({
+              lap: l.lapNumber,
+              fuelRemaining: l.fuelRemaining,
+              fuelUsed: l.fuelUsed,
+            }))}
+            capacity={laps[0]?.fuelCapacity ?? 0}
+          />
+        </div>
+      )}
 
-
-        <section className="border hairline">
-          <div className="px-4 py-3 border-b hairline flex items-center justify-between">
-            <span className="mono text-[10px] tracking-[0.2em] text-muted">
-              TODAS AS VOLTAS · POR ORDEM
+      {/* Lap-by-lap full table */}
+      <div style={{ padding: "0 var(--pad) var(--pad)" }}>
+        <div
+          style={{
+            background: "var(--bg-1)",
+            border: "1px solid var(--bd-0)",
+          }}
+        >
+          <div
+            style={{
+              padding: "10px 14px",
+              borderBottom: "1px solid var(--bd-0)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                color: "var(--tx-1)",
+                textTransform: "uppercase",
+              }}
+            >
+              Voltas · Lap-by-lap
               {outlierSet.size > 0
-                ? ` · ${outlierSet.size} OUTLIER(S) DESCONSIDERADA(S)`
+                ? ` · ${outlierSet.size} OUTLIER${
+                    outlierSet.size > 1 ? "S" : ""
+                  } DESCONSIDERADA${outlierSet.size > 1 ? "S" : ""}`
                 : ""}
             </span>
-            <span className="mono text-[10px] tracking-[0.2em] text-muted">
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                color: "var(--tx-3)",
+              }}
+            >
               {laps.length} {laps.length === 1 ? "VOLTA" : "VOLTAS"}
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div style={{ overflowX: "auto" }}>
             <SessionLapsTable
               laps={laps}
               bestLapId={bestLapId}
@@ -364,7 +676,7 @@ export default function SessionDetail() {
               onDeleteLap={handleDeleteLap}
             />
           </div>
-        </section>
+        </div>
       </div>
     </div>
   );

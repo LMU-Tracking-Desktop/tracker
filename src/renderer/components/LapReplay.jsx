@@ -560,7 +560,7 @@ function Scene2D({ replay, reference, getTimeRef }) {
           )}
           <path
             d={mainPathD}
-            stroke="#ff2d2d"
+            stroke="var(--crit)"
             strokeWidth={2.2}
             vectorEffect="non-scaling-stroke"
             strokeLinecap="round"
@@ -599,7 +599,7 @@ function Scene2D({ replay, reference, getTimeRef }) {
           marginLeft: -11,
           marginTop: -11,
           borderRadius: "50%",
-          background: "#ff2d2d",
+          background: "var(--crit)",
           border: "2px solid #fff",
           pointerEvents: "none",
         }}
@@ -736,21 +736,23 @@ function Timeline({ replay, getTimeRef, onScrub }) {
     >
       <defs>
         <linearGradient id="tlGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#c77dff" stopOpacity={0.5} />
-          <stop offset="100%" stopColor="#c77dff" stopOpacity={0.05} />
+          <stop offset="0%" stopColor="var(--speed)" stopOpacity={0.5} />
+          <stop offset="100%" stopColor="var(--speed)" stopOpacity={0.05} />
         </linearGradient>
       </defs>
-      <rect x={0} y={0} width={W} height={H} fill="var(--surface-2)" />
+      <rect x={0} y={0} width={W} height={H} fill="var(--bg-2)" />
       <line
         x1={pad}
         y1={H / 2}
         x2={W - pad}
         y2={H / 2}
-        stroke="var(--border)"
+        stroke="var(--bd-0)"
         strokeDasharray="2 4"
       />
       {fillD && <path d={fillD} fill="url(#tlGrad)" />}
-      {pathD && <path d={pathD} fill="none" stroke="#c77dff" strokeWidth={1.5} />}
+      {pathD && (
+        <path d={pathD} fill="none" stroke="var(--speed)" strokeWidth={1.4} />
+      )}
       <line
         ref={lineRef}
         x1={pad}
@@ -758,7 +760,7 @@ function Timeline({ replay, getTimeRef, onScrub }) {
         x2={pad}
         y2={H - 4}
         stroke="var(--accent)"
-        strokeWidth={2}
+        strokeWidth={1.5}
       />
       <circle ref={dotRef} cx={pad} cy={4} r={4} fill="var(--accent)" />
     </svg>
@@ -813,38 +815,86 @@ function Hud({ replay, getTimeRef }) {
     return () => cancelAnimationFrame(raf);
   }, [replay, getTimeRef]);
 
+  const labelStyle = {
+    fontSize: 9,
+    letterSpacing: "0.18em",
+    color: "var(--tx-3)",
+    textTransform: "uppercase",
+  };
+
   return (
-    <div className="flex items-center gap-4 flex-wrap">
-      <div className="flex flex-col">
-        <span className="mono text-[9px] tracking-[0.2em] text-muted">
-          VELOCIDADE
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 18,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="mono" style={labelStyle}>
+          Velocidade
         </span>
         <span
-          className="mono text-2xl font-semibold tabular-nums"
-          style={{ color: "var(--accent)" }}
+          className="mono"
+          style={{
+            fontSize: 26,
+            fontWeight: 600,
+            color: "var(--speed)",
+            letterSpacing: "-0.01em",
+            lineHeight: 1,
+          }}
         >
           <span ref={velocityRef}>0</span>
-          <span className="text-sm text-muted ml-1">KM/H</span>
+          <span
+            className="mono"
+            style={{
+              fontSize: 11,
+              color: "var(--tx-3)",
+              marginLeft: 6,
+              letterSpacing: "0.14em",
+            }}
+          >
+            KM/H
+          </span>
         </span>
       </div>
-      <div className="flex flex-col">
-        <span className="mono text-[9px] tracking-[0.2em] text-muted">
-          MARCHA
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="mono" style={labelStyle}>
+          Marcha
         </span>
         <span
           ref={gearRef}
-          className="mono text-2xl font-semibold tabular-nums"
-          style={{ color: "#ffd60a", minWidth: 24, textAlign: "center" }}
+          className="mono"
+          style={{
+            fontSize: 26,
+            fontWeight: 600,
+            color: "var(--gear)",
+            minWidth: 24,
+            textAlign: "center",
+            letterSpacing: "-0.01em",
+            lineHeight: 1,
+          }}
         >
           —
         </span>
       </div>
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col gap-1" style={{ minWidth: 68 }}>
-          <span className="mono text-[9px] tracking-[0.2em] text-muted">
-            THROTTLE
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 80 }}
+        >
+          <span className="mono" style={labelStyle}>
+            Throttle
           </span>
-          <div style={{ height: 6, background: barBg, position: "relative" }}>
+          <div
+            style={{
+              height: 6,
+              background: barBg,
+              border: "1px solid var(--bd-1)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
             <div
               ref={throttleFillRef}
               style={{
@@ -853,16 +903,26 @@ function Hud({ replay, getTimeRef }) {
                 top: 0,
                 bottom: 0,
                 width: "0%",
-                background: "#30f58a",
+                background: "var(--throttle)",
               }}
             />
           </div>
         </div>
-        <div className="flex flex-col gap-1" style={{ minWidth: 68 }}>
-          <span className="mono text-[9px] tracking-[0.2em] text-muted">
-            BRAKE
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 80 }}
+        >
+          <span className="mono" style={labelStyle}>
+            Brake
           </span>
-          <div style={{ height: 6, background: barBg, position: "relative" }}>
+          <div
+            style={{
+              height: 6,
+              background: barBg,
+              border: "1px solid var(--bd-1)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
             <div
               ref={brakeFillRef}
               style={{
@@ -871,17 +931,27 @@ function Hud({ replay, getTimeRef }) {
                 top: 0,
                 bottom: 0,
                 width: "0%",
-                background: "#ff2d2d",
+                background: "var(--brake)",
               }}
             />
           </div>
         </div>
       </div>
-      <div className="flex flex-col gap-1" style={{ minWidth: 80 }}>
-        <span className="mono text-[9px] tracking-[0.2em] text-muted">
-          STEERING
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 100 }}
+      >
+        <span className="mono" style={labelStyle}>
+          Steering
         </span>
-        <div style={{ height: 6, background: barBg, position: "relative" }}>
+        <div
+          style={{
+            height: 6,
+            background: barBg,
+            border: "1px solid var(--bd-1)",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
           <div
             ref={steerFillRef}
             style={{
@@ -891,7 +961,7 @@ function Hud({ replay, getTimeRef }) {
               bottom: 0,
               width: "0%",
               transform: "translateX(0)",
-              background: "#5ac8ff",
+              background: "var(--steer)",
             }}
           />
           <div
@@ -901,16 +971,24 @@ function Hud({ replay, getTimeRef }) {
               top: -2,
               bottom: -2,
               width: 1,
-              background: "var(--border)",
+              background: "var(--bd-2)",
             }}
           />
         </div>
       </div>
-      <div className="flex flex-col">
-        <span className="mono text-[9px] tracking-[0.2em] text-muted">
-          DISTANCIA
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="mono" style={labelStyle}>
+          Distância
         </span>
-        <span ref={distanceRef} className="mono text-sm tabular-nums">
+        <span
+          ref={distanceRef}
+          className="mono"
+          style={{
+            fontSize: 14,
+            color: "var(--tx-1)",
+            fontWeight: 500,
+          }}
+        >
           0m
         </span>
       </div>
@@ -1098,8 +1176,25 @@ function LapReplayBase({ telemetry, reference, mode = "3d" }) {
 
   if (!replay) {
     return (
-      <div className="border hairline p-8 text-center text-muted mono text-xs tracking-widest">
-        TELEMETRIA INSUFICIENTE PARA REPLAY
+      <div
+        style={{
+          margin: "var(--pad)",
+          border: "1px solid var(--bd-0)",
+          background: "var(--bg-1)",
+          padding: "48px var(--pad)",
+          textAlign: "center",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.18em",
+            color: "var(--tx-3)",
+          }}
+        >
+          TELEMETRIA INSUFICIENTE PARA REPLAY
+        </span>
       </div>
     );
   }
@@ -1136,46 +1231,74 @@ function LapReplayBase({ telemetry, reference, mode = "3d" }) {
 
   return (
     <div
-      className="border hairline flex flex-col"
-      style={{ background: "var(--surface)" }}
+      style={{
+        background: "var(--bg-1)",
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
     >
-      <div className="px-4 py-3 border-b hairline flex items-center justify-between flex-wrap gap-3">
-        <span className="mono text-[10px] tracking-[0.2em] text-muted">
+      <div
+        style={{
+          padding: "8px 14px",
+          borderBottom: "1px solid var(--bd-0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 10,
+          background: "var(--bg-1)",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.14em",
+            color: "var(--tx-1)",
+            textTransform: "uppercase",
+            fontWeight: 600,
+          }}
+        >
           {mode === "2d"
-            ? "REPLAY 2D · TOP-DOWN · AUTO-ZOOM"
-            : `REPLAY 3D · ${chaseCamera ? "CAMERA CHASE" : "CAMERA LIVRE"}`}
+            ? "Replay 2D · Top-Down · Auto-Zoom"
+            : `Replay 3D · ${chaseCamera ? "Câmera Chase" : "Câmera Livre"}`}
         </span>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="mono text-[10px] tracking-[0.2em] text-muted">
-            ESPACO = PLAY · ← → = ±1s
-          </span>
-          {mode === "3d" && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setChaseCamera((c) => !c)}
-              style={{
-                padding: "4px 10px",
-                fontSize: 10,
-                color: chaseCamera ? "var(--accent)" : "var(--muted)",
-                borderColor: chaseCamera ? "var(--accent)" : "var(--border)",
-              }}
-              title={
-                chaseCamera
-                  ? "Voltar pra camera livre (OrbitControls)"
-                  : "Ativar camera que segue atras do carro"
-              }
-            >
-              {chaseCamera ? "◉ CHASE" : "○ CHASE"}
-            </button>
-          )}
-        </div>
+        {mode === "3d" && (
+          <button
+            type="button"
+            className="mono"
+            onClick={() => setChaseCamera((c) => !c)}
+            style={{
+              padding: "5px 12px",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              background: chaseCamera ? "var(--bg-3)" : "transparent",
+              color: chaseCamera ? "var(--accent)" : "var(--tx-2)",
+              border: "1px solid",
+              borderColor: chaseCamera ? "var(--accent)" : "var(--bd-1)",
+              cursor: "pointer",
+              fontWeight: chaseCamera ? 600 : 400,
+              textTransform: "uppercase",
+            }}
+            title={
+              chaseCamera
+                ? "Voltar pra câmera livre (OrbitControls)"
+                : "Ativar câmera que segue atrás do carro"
+            }
+          >
+            {chaseCamera ? "◉ CHASE" : "○ CHASE"}
+          </button>
+        )}
       </div>
 
       <div
         ref={canvasWrapRef}
         style={{
-          height: 480,
+          flex: 1,
+          minHeight: 280,
           background: "linear-gradient(to bottom, #08080c 0%, #131319 100%)",
           position: "relative",
         }}
@@ -1254,25 +1377,53 @@ function LapReplayBase({ telemetry, reference, mode = "3d" }) {
         )}
       </div>
 
-      <div className="px-4 py-3 border-t hairline">
+      <div
+        style={{
+          padding: "10px 14px",
+          borderTop: "1px solid var(--bd-0)",
+          background: "var(--bg-1)",
+          flexShrink: 0,
+        }}
+      >
         <Hud replay={replay} getTimeRef={getTimeRef} />
       </div>
 
-      <div className="border-t hairline">
+      <div
+        style={{
+          borderTop: "1px solid var(--bd-0)",
+          background: "var(--bg-2)",
+          flexShrink: 0,
+        }}
+      >
         <Timeline replay={replay} getTimeRef={getTimeRef} onScrub={scrub} />
       </div>
 
-      <div className="px-4 py-3 border-t hairline flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div
+        style={{
+          padding: "10px 14px",
+          borderTop: "1px solid var(--bd-0)",
+          background: "var(--bg-1)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
           <button
             type="button"
-            className="btn"
+            className={playing ? "btn" : "btn solid"}
             onClick={togglePlay}
-            style={{
-              padding: "6px 14px",
-              color: playing ? "var(--accent)" : "var(--foreground)",
-              borderColor: playing ? "var(--accent)" : "var(--border)",
-            }}
+            style={{ padding: "7px 14px", fontSize: 11 }}
           >
             {playing ? "⏸ PAUSAR" : "▶ REPRODUZIR"}
           </button>
@@ -1280,44 +1431,75 @@ function LapReplayBase({ telemetry, reference, mode = "3d" }) {
             type="button"
             className="btn"
             onClick={() => scrub(0)}
-            style={{ padding: "6px 12px" }}
-            title="Voltar ao inicio"
+            style={{ padding: "7px 10px" }}
+            title="Voltar ao início"
           >
             ⏮
           </button>
           <button
             type="button"
-            className="btn"
+            className="mono"
             onClick={() => setDirection((d) => -d)}
             style={{
-              padding: "6px 12px",
-              color: direction < 0 ? "var(--accent)" : "var(--foreground)",
-              borderColor: direction < 0 ? "var(--accent)" : "var(--border)",
+              padding: "7px 12px",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              background: direction < 0 ? "var(--bg-3)" : "transparent",
+              color: direction < 0 ? "var(--accent)" : "var(--tx-1)",
+              border: "1px solid",
+              borderColor: direction < 0 ? "var(--accent)" : "var(--bd-1)",
+              cursor: "pointer",
+              textTransform: "uppercase",
+              fontWeight: direction < 0 ? 600 : 400,
             }}
           >
             {direction > 0 ? "▶▶ FRENTE" : "◀◀ REVERSO"}
           </button>
-          <div className="flex items-center gap-1 ml-2">
-            <span className="mono text-[10px] tracking-[0.2em] text-muted mr-1">
-              VEL
-            </span>
-            {[0.25, 0.5, 1, 2, 4].map((sp) => (
-              <button
-                key={sp}
-                type="button"
-                className="btn"
-                onClick={() => setSpeed(sp)}
-                style={{
-                  padding: "4px 8px",
-                  fontSize: 10,
-                  color: speed === sp ? "var(--accent)" : "var(--muted)",
-                  borderColor:
-                    speed === sp ? "var(--accent)" : "var(--border)",
-                }}
-              >
-                {sp}×
-              </button>
-            ))}
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+              marginLeft: 8,
+              textTransform: "uppercase",
+            }}
+          >
+            Vel
+          </span>
+          <div
+            style={{
+              display: "inline-flex",
+              border: "1px solid var(--bd-1)",
+            }}
+          >
+            {[0.25, 0.5, 1, 2, 4].map((sp, i, arr) => {
+              const active = speed === sp;
+              return (
+                <button
+                  key={sp}
+                  type="button"
+                  className="mono"
+                  onClick={() => setSpeed(sp)}
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: 10,
+                    letterSpacing: "0.05em",
+                    background: active ? "var(--bg-3)" : "transparent",
+                    color: active ? "var(--accent)" : "var(--tx-2)",
+                    border: "none",
+                    borderRight:
+                      i < arr.length - 1
+                        ? "1px solid var(--bd-1)"
+                        : "none",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer",
+                  }}
+                >
+                  {sp}×
+                </button>
+              );
+            })}
           </div>
         </div>
         <TimeDisplay replay={replay} getTimeRef={getTimeRef} />

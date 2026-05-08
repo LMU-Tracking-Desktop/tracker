@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Modal from "./Modal.jsx";
 
 const fmtLap = (t) => {
   if (t == null || t <= 0) return "—";
@@ -20,7 +21,6 @@ const fmtDate = (d) =>
       })
     : "—";
 
-// Normaliza qualquer fonte (sessao/outras/importadas) num shape comum.
 function normalizeSession(lap) {
   return {
     key: lap.id,
@@ -75,22 +75,39 @@ function normalizeImport(lap) {
 }
 
 const KIND_BADGE = {
-  session: "SESSAO",
-  other: "OUTRA SESSAO",
+  session: "SESSÃO",
+  other: "OUTRA SESSÃO",
   import: "IMPORTADA",
+};
+
+const TH_STYLE = {
+  padding: "8px 12px",
+  textAlign: "left",
+  fontSize: 9,
+  letterSpacing: "0.18em",
+  color: "var(--tx-3)",
+  textTransform: "uppercase",
+  fontWeight: 500,
+  fontFamily: "Geist Mono",
+  borderBottom: "1px solid var(--bd-0)",
+};
+const TD_STYLE = {
+  padding: "8px 12px",
+  fontSize: 11,
+  fontFamily: "Geist Mono",
 };
 
 export default function LapPickerModal({
   open,
   onClose,
   onSelect,
-  mode, // "primary" | "reference"
+  mode,
   title,
   sessionLaps = [],
   otherLaps = [],
   importedLaps = [],
-  selectedLapId, // qual ja esta escolhida no slot (highlight + impede re-seleção sem efeito)
-  excludeLapId, // no modo reference: nao mostrar a volta primaria
+  selectedLapId,
+  excludeLapId,
 }) {
   const isReference = mode === "reference";
   const [tab, setTab] = useState(null);
@@ -103,7 +120,9 @@ export default function LapPickerModal({
       { id: "s1", label: "Melhor S1" },
       { id: "s2", label: "Melhor S2" },
       { id: "s3", label: "Melhor S3" },
-      ...(isReference ? [{ id: "shared", label: "Voltas compartilhadas" }] : []),
+      ...(isReference
+        ? [{ id: "shared", label: "Voltas compartilhadas" }]
+        : []),
     ];
     return list;
   }, [isReference]);
@@ -112,7 +131,6 @@ export default function LapPickerModal({
     if (open && !tab) setTab("session");
   }, [open, tab]);
 
-  // Conjuntos de candidatas pra cada tab.
   const candidatesByTab = useMemo(() => {
     const allSession = sessionLaps
       .filter((l) => l.hasTelemetry)
@@ -120,7 +138,6 @@ export default function LapPickerModal({
     const allOther = otherLaps.map(normalizeOther);
     const allImports = importedLaps.map(normalizeImport);
 
-    // Primary: so faz sentido escolher uma volta da sessao atual (precisa de telemetria local).
     if (!isReference) {
       return {
         session: [...allSession].sort((a, b) => a.lapNumber - b.lapNumber),
@@ -155,8 +172,6 @@ export default function LapPickerModal({
     };
   }, [sessionLaps, otherLaps, importedLaps, isReference]);
 
-  if (!open) return null;
-
   const baseRows = candidatesByTab[tab] || [];
   const filteredRows = baseRows
     .filter((r) => (showInvalid ? true : r.isValid))
@@ -166,12 +181,11 @@ export default function LapPickerModal({
     tab === "s1"
       ? "sector1"
       : tab === "s2"
-        ? "sector2"
-        : tab === "s3"
-          ? "sector3"
-          : null;
+      ? "sector2"
+      : tab === "s3"
+      ? "sector3"
+      : null;
 
-  // Melhor valor (positivo) de cada coluna nas linhas visiveis — pintado de roxo.
   const bestOf = (key) => {
     let best = null;
     for (const r of filteredRows) {
@@ -185,315 +199,29 @@ export default function LapPickerModal({
   const bestSector1 = bestOf("sector1");
   const bestSector2 = bestOf("sector2");
   const bestSector3 = bestOf("sector3");
-  const purple = { color: "var(--purple)" };
+  const purple = { color: "var(--speed)", fontWeight: 600 };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-      }}
-      onClick={onClose}
-    >
-      <div
-        className="border hairline"
-        style={{
-          background: "var(--background)",
-          width: "min(900px, 96vw)",
-          height: "min(640px, 90vh)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-3 border-b hairline flex items-center justify-between">
-          <span className="mono text-[11px] tracking-[0.2em]">
-            {title || (isReference ? "COMPARAR COM" : "ESCOLHER VOLTA")}
-          </span>
-          <button
-            type="button"
-            className="delete-btn always"
-            onClick={onClose}
-            title="Fechar"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          {/* Sidebar de tabs */}
-          <div
-            className="border-r hairline"
-            style={{
-              width: 200,
-              flexShrink: 0,
-              display: "flex",
-              flexDirection: "column",
-              background: "var(--surface)",
-            }}
-          >
-            {tabs.map((t) => {
-              const active = tab === t.id;
-              return (
-                <button
-                  type="button"
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className="mono text-[11px] tracking-[0.1em]"
-                  style={{
-                    textAlign: "left",
-                    padding: "10px 14px",
-                    border: "none",
-                    background: active ? "var(--background)" : "transparent",
-                    color: active ? "var(--accent)" : "var(--muted)",
-                    borderLeft: active
-                      ? "2px solid var(--accent)"
-                      : "2px solid transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Conteudo */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <div className="px-4 py-2 border-b hairline flex items-center justify-between">
-              <label className="mono text-[10px] tracking-[0.15em] text-muted flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showInvalid}
-                  onChange={(e) => setShowInvalid(e.target.checked)}
-                />
-                MOSTRAR VOLTAS INVALIDAS
-              </label>
-              <span className="mono text-[10px] tracking-[0.15em] text-muted">
-                {filteredRows.length}{" "}
-                {filteredRows.length === 1 ? "VOLTA" : "VOLTAS"}
-              </span>
-            </div>
-
-            <div style={{ flex: 1, overflowY: "auto" }}>
-              {filteredRows.length === 0 ? (
-                <div className="p-8 text-center mono text-[10px] tracking-widest text-muted">
-                  NENHUMA VOLTA
-                </div>
-              ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead
-                    style={{
-                      position: "sticky",
-                      top: 0,
-                      background: "var(--surface)",
-                      borderBottom: "1px solid var(--border)",
-                    }}
-                  >
-                    <tr>
-                      {rankedField && (
-                        <th
-                          className="mono text-[10px] tracking-[0.15em] text-muted"
-                          style={{ padding: "8px 12px", textAlign: "left" }}
-                        >
-                          #
-                        </th>
-                      )}
-                      <th
-                        className="mono text-[10px] tracking-[0.15em] text-muted"
-                        style={{ padding: "8px 12px", textAlign: "left" }}
-                      >
-                        VOLTA
-                      </th>
-                      <th
-                        className="mono text-[10px] tracking-[0.15em] text-muted"
-                        style={{ padding: "8px 12px", textAlign: "left" }}
-                      >
-                        ORIGEM
-                      </th>
-                      <th
-                        className="mono text-[10px] tracking-[0.15em] text-muted"
-                        style={{
-                          padding: "8px 12px",
-                          textAlign: "right",
-                          borderLeft: "1px solid var(--border)",
-                        }}
-                      >
-                        S1
-                      </th>
-                      <th
-                        className="mono text-[10px] tracking-[0.15em] text-muted"
-                        style={{ padding: "8px 12px", textAlign: "right" }}
-                      >
-                        S2
-                      </th>
-                      <th
-                        className="mono text-[10px] tracking-[0.15em] text-muted"
-                        style={{ padding: "8px 12px", textAlign: "right" }}
-                      >
-                        S3
-                      </th>
-                      <th
-                        className="mono text-[10px] tracking-[0.15em] text-muted"
-                        style={{
-                          padding: "8px 12px",
-                          textAlign: "right",
-                          borderLeft: "1px solid var(--border)",
-                        }}
-                      >
-                        TEMPO
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.map((row, i) => {
-                      const isSelected = row.lapId === selectedLapId;
-                      const isBest = (key, best) =>
-                        best != null && row[key] === best;
-                      return (
-                        <tr
-                          key={row.key}
-                          onClick={() => {
-                            onSelect?.(row.lapId);
-                            onClose?.();
-                          }}
-                          style={{
-                            borderBottom: "1px solid var(--border)",
-                            background: isSelected
-                              ? "var(--surface)"
-                              : "transparent",
-                            cursor: "pointer",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected)
-                              e.currentTarget.style.background =
-                                "var(--surface)";
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected)
-                              e.currentTarget.style.background = "transparent";
-                          }}
-                        >
-                          {rankedField && (
-                            <td
-                              className="mono text-[11px]"
-                              style={{
-                                padding: "8px 12px",
-                                color: "var(--muted)",
-                              }}
-                            >
-                              {i + 1}
-                            </td>
-                          )}
-                          <td
-                            className="mono text-[11px]"
-                            style={{ padding: "8px 12px" }}
-                          >
-                            {row.label}
-                            {row.sublabel ? (
-                              <span
-                                className="text-muted ml-2"
-                                style={{ fontSize: 10 }}
-                              >
-                                {row.sublabel}
-                              </span>
-                            ) : null}
-                            {!row.isValid ? (
-                              <span
-                                className="ml-2"
-                                style={{
-                                  color: "var(--accent)",
-                                  fontSize: 10,
-                                }}
-                              >
-                                INV
-                              </span>
-                            ) : null}
-                            {isSelected ? (
-                              <span
-                                className="ml-2"
-                                style={{
-                                  color: "var(--accent)",
-                                  fontSize: 10,
-                                }}
-                              >
-                                ATUAL
-                              </span>
-                            ) : null}
-                          </td>
-                          <td
-                            className="mono text-[10px] text-muted"
-                            style={{ padding: "8px 12px" }}
-                          >
-                            {KIND_BADGE[row.kind]}
-                          </td>
-                          <td
-                            className="mono text-[11px]"
-                            style={{
-                              padding: "8px 12px",
-                              textAlign: "right",
-                              borderLeft: "1px solid var(--border)",
-                              ...(isBest("sector1", bestSector1) ? purple : {}),
-                            }}
-                          >
-                            {fmtSector(row.sector1)}
-                          </td>
-                          <td
-                            className="mono text-[11px]"
-                            style={{
-                              padding: "8px 12px",
-                              textAlign: "right",
-                              ...(isBest("sector2", bestSector2) ? purple : {}),
-                            }}
-                          >
-                            {fmtSector(row.sector2)}
-                          </td>
-                          <td
-                            className="mono text-[11px]"
-                            style={{
-                              padding: "8px 12px",
-                              textAlign: "right",
-                              ...(isBest("sector3", bestSector3) ? purple : {}),
-                            }}
-                          >
-                            {fmtSector(row.sector3)}
-                          </td>
-                          <td
-                            className="mono text-[11px]"
-                            style={{
-                              padding: "8px 12px",
-                              textAlign: "right",
-                              borderLeft: "1px solid var(--border)",
-                              ...(isBest("lapTime", bestLapTime) ? purple : {}),
-                            }}
-                          >
-                            {fmtLap(row.lapTime)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {isReference && (
-          <div className="px-5 py-2 border-t hairline flex items-center justify-between">
-            <span className="mono text-[9px] tracking-[0.15em] text-muted">
-              clique numa linha pra usar como referência
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title || (isReference ? "Comparar com" : "Escolher Volta")}
+      width={900}
+      height={640}
+      footer={
+        isReference && (
+          <>
+            <span
+              className="mono"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.14em",
+                color: "var(--tx-3)",
+                textTransform: "uppercase",
+                marginRight: "auto",
+              }}
+            >
+              Clique numa linha pra usar como referência
             </span>
             <button
               type="button"
@@ -502,13 +230,296 @@ export default function LapPickerModal({
                 onSelect?.(null);
                 onClose?.();
               }}
-              style={{ fontSize: 10 }}
             >
               SEM REFERÊNCIA
             </button>
+          </>
+        )
+      }
+    >
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {/* Sidebar tabs */}
+        <div
+          style={{
+            width: 200,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            background: "var(--bg-2)",
+            borderRight: "1px solid var(--bd-0)",
+          }}
+        >
+          {tabs.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                type="button"
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className="mono"
+                style={{
+                  textAlign: "left",
+                  padding: "10px 14px",
+                  border: "none",
+                  background: active ? "var(--bg-1)" : "transparent",
+                  color: active ? "var(--tx-0)" : "var(--tx-2)",
+                  borderLeft: "2px solid",
+                  borderLeftColor: active ? "var(--accent)" : "transparent",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  letterSpacing: "0.08em",
+                  fontWeight: active ? 600 : 400,
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) e.currentTarget.style.color = "var(--tx-1)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) e.currentTarget.style.color = "var(--tx-2)";
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Content */}
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 14px",
+              borderBottom: "1px solid var(--bd-0)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexShrink: 0,
+            }}
+          >
+            <label
+              className="mono"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                color: "var(--tx-2)",
+                cursor: "pointer",
+                textTransform: "uppercase",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showInvalid}
+                onChange={(e) => setShowInvalid(e.target.checked)}
+                style={{ accentColor: "var(--accent)" }}
+              />
+              Mostrar inválidas
+            </label>
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                color: "var(--tx-3)",
+                textTransform: "uppercase",
+              }}
+            >
+              {filteredRows.length}{" "}
+              {filteredRows.length === 1 ? "VOLTA" : "VOLTAS"}
+            </span>
           </div>
-        )}
+
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {filteredRows.length === 0 ? (
+              <div
+                className="mono"
+                style={{
+                  padding: 32,
+                  textAlign: "center",
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  color: "var(--tx-3)",
+                }}
+              >
+                NENHUMA VOLTA
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "var(--bg-1)",
+                    zIndex: 1,
+                  }}
+                >
+                  <tr>
+                    {rankedField && <th style={TH_STYLE}>#</th>}
+                    <th style={TH_STYLE}>Volta</th>
+                    <th style={TH_STYLE}>Origem</th>
+                    <th
+                      style={{
+                        ...TH_STYLE,
+                        textAlign: "right",
+                        borderLeft: "1px solid var(--bd-0)",
+                      }}
+                    >
+                      S1
+                    </th>
+                    <th style={{ ...TH_STYLE, textAlign: "right" }}>S2</th>
+                    <th style={{ ...TH_STYLE, textAlign: "right" }}>S3</th>
+                    <th
+                      style={{
+                        ...TH_STYLE,
+                        textAlign: "right",
+                        borderLeft: "1px solid var(--bd-0)",
+                      }}
+                    >
+                      Tempo
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row, i) => {
+                    const isSelected = row.lapId === selectedLapId;
+                    const isBest = (key, best) =>
+                      best != null && row[key] === best;
+                    return (
+                      <tr
+                        key={row.key}
+                        onClick={() => {
+                          onSelect?.(row.lapId);
+                          onClose?.();
+                        }}
+                        style={{
+                          borderBottom: "1px solid var(--bd-0)",
+                          background: isSelected
+                            ? "var(--bg-2)"
+                            : "transparent",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected)
+                            e.currentTarget.style.background = "var(--bg-2)";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected)
+                            e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        {rankedField && (
+                          <td style={{ ...TD_STYLE, color: "var(--tx-3)" }}>
+                            {i + 1}
+                          </td>
+                        )}
+                        <td style={{ ...TD_STYLE, color: "var(--tx-0)" }}>
+                          <span>{row.label}</span>
+                          {row.sublabel && (
+                            <span
+                              style={{
+                                color: "var(--tx-3)",
+                                marginLeft: 8,
+                                fontSize: 10,
+                              }}
+                            >
+                              {row.sublabel}
+                            </span>
+                          )}
+                          {!row.isValid && (
+                            <span
+                              style={{
+                                color: "var(--crit)",
+                                marginLeft: 8,
+                                fontSize: 9,
+                                letterSpacing: "0.14em",
+                              }}
+                            >
+                              INV
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span
+                              style={{
+                                color: "var(--accent)",
+                                marginLeft: 8,
+                                fontSize: 9,
+                                letterSpacing: "0.14em",
+                                fontWeight: 600,
+                              }}
+                            >
+                              ATUAL
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            ...TD_STYLE,
+                            color: "var(--tx-3)",
+                            fontSize: 9,
+                            letterSpacing: "0.14em",
+                          }}
+                        >
+                          {KIND_BADGE[row.kind]}
+                        </td>
+                        <td
+                          style={{
+                            ...TD_STYLE,
+                            textAlign: "right",
+                            borderLeft: "1px solid var(--bd-0)",
+                            color: "var(--tx-1)",
+                            ...(isBest("sector1", bestSector1) ? purple : {}),
+                          }}
+                        >
+                          {fmtSector(row.sector1)}
+                        </td>
+                        <td
+                          style={{
+                            ...TD_STYLE,
+                            textAlign: "right",
+                            color: "var(--tx-1)",
+                            ...(isBest("sector2", bestSector2) ? purple : {}),
+                          }}
+                        >
+                          {fmtSector(row.sector2)}
+                        </td>
+                        <td
+                          style={{
+                            ...TD_STYLE,
+                            textAlign: "right",
+                            color: "var(--tx-1)",
+                            ...(isBest("sector3", bestSector3) ? purple : {}),
+                          }}
+                        >
+                          {fmtSector(row.sector3)}
+                        </td>
+                        <td
+                          style={{
+                            ...TD_STYLE,
+                            textAlign: "right",
+                            borderLeft: "1px solid var(--bd-0)",
+                            color: "var(--tx-0)",
+                            ...(isBest("lapTime", bestLapTime) ? purple : {}),
+                          }}
+                        >
+                          {fmtLap(row.lapTime)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld("api", {
     return () => ipcRenderer.removeListener("tracker-log", listener);
   },
   getLogBuffer: () => ipcRenderer.invoke("tracker-log-buffer"),
+  getLmuStatus: () => ipcRenderer.invoke("lmu.status"),
+  onLmuStatusChange: (callback) => {
+    const listener = (_e, payload) => callback(payload);
+    ipcRenderer.on("lmu-status", listener);
+    return () => ipcRenderer.removeListener("lmu-status", listener);
+  },
   getStats7d: () => ipcRenderer.invoke("stats.last7days"),
   listTracks: () => ipcRenderer.invoke("tracks.list"),
   listCars: () => ipcRenderer.invoke("cars.list"),

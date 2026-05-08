@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Modal from "./Modal.jsx";
 import { timeInRange } from "../lib/telemetry.js";
 
 const fmtLap = (t) => {
@@ -16,8 +17,6 @@ const fmtDelta = (d) => {
   return `${sign}${d.toFixed(3)}s`;
 };
 
-// Descreve uma candidata de forma uniforme.
-// kind: "session" | "other" | "import"
 function buildCandidates({ sessionLaps, otherLaps, importedLaps, currentLapId }) {
   const list = [];
   for (const l of sessionLaps || []) {
@@ -27,7 +26,7 @@ function buildCandidates({ sessionLaps, otherLaps, importedLaps, currentLapId })
       lapId: l.id,
       kind: "session",
       label: `Volta ${l.lapNumber}`,
-      sublabel: l.isValid ? null : "INV",
+      sublabel: null,
       lapTime: l.lapTime,
       isValid: l.isValid,
       isCurrent: l.id === currentLapId,
@@ -67,6 +66,29 @@ async function fetchTelemetryFor(lapId) {
   return window.api?.getLapTelemetry?.(lapId);
 }
 
+const KIND_BADGE = {
+  session: "SESSÃO",
+  other: "OUTRA SESSÃO",
+  import: "IMPORTADA",
+};
+
+const TH_STYLE = {
+  padding: "8px 12px",
+  textAlign: "left",
+  fontSize: 9,
+  letterSpacing: "0.18em",
+  color: "var(--tx-3)",
+  textTransform: "uppercase",
+  fontWeight: 500,
+  fontFamily: "Geist Mono",
+  borderBottom: "1px solid var(--bd-0)",
+};
+const TD_STYLE = {
+  padding: "8px 12px",
+  fontSize: 11,
+  fontFamily: "Geist Mono",
+};
+
 export default function BestInRangePanel({
   open,
   onClose,
@@ -84,16 +106,10 @@ export default function BestInRangePanel({
 
   const candidates = useMemo(
     () =>
-      buildCandidates({
-        sessionLaps,
-        otherLaps,
-        importedLaps,
-        currentLapId,
-      }),
+      buildCandidates({ sessionLaps, otherLaps, importedLaps, currentLapId }),
     [sessionLaps, otherLaps, importedLaps, currentLapId]
   );
 
-  // Calcula tempo no trecho pra cada candidata.
   useEffect(() => {
     if (!open || !range) return;
     let cancelled = false;
@@ -124,10 +140,9 @@ export default function BestInRangePanel({
     };
   }, [open, range, candidates, currentLapId, currentTelemetry]);
 
-  if (!open || !range) return null;
+  if (!range) return null;
 
   const [d1, d2] = range;
-
   const filtered = showInvalid ? results : results.filter((r) => r.isValid);
   const withTime = filtered.filter((r) => r.timeInRange != null);
   const sorted = [...withTime].sort((a, b) => a.timeInRange - b.timeInRange);
@@ -135,251 +150,250 @@ export default function BestInRangePanel({
   const currentT = currentRow?.timeInRange ?? null;
   const bestT = sorted[0]?.timeInRange ?? null;
 
-  const kindBadge = (kind) => {
-    if (kind === "other") return "OUTRA SESSAO";
-    if (kind === "import") return "IMPORTADA";
-    return "SESSAO";
-  };
-
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-      }}
-      onClick={onClose}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Melhores neste Trecho"
+      subtitle={`${Math.round(d1)}m → ${Math.round(d2)}m · ${Math.round(
+        d2 - d1
+      )}m`}
+      width={760}
+      footer={
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-3)",
+            textTransform: "uppercase",
+          }}
+        >
+          Tempo no trecho = t(fim) − t(início) interpolado · independente do delta acumulado
+        </span>
+      }
     >
       <div
-        className="border hairline"
         style={{
-          background: "var(--background)",
-          width: "min(720px, 94vw)",
-          maxHeight: "90vh",
+          padding: "8px 14px",
+          borderBottom: "1px solid var(--bd-0)",
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b hairline flex items-center justify-between">
-          <div className="flex flex-col gap-0.5">
-            <span className="mono text-[11px] tracking-[0.2em]">
-              MELHORES NESTE TRECHO
-            </span>
-            <span className="mono text-[10px] tracking-[0.15em] text-muted">
-              {Math.round(d1)}m → {Math.round(d2)}m ·{" "}
-              {Math.round(d2 - d1)}m
-            </span>
-          </div>
-          <button
-            type="button"
-            className="delete-btn always"
-            onClick={onClose}
-            title="Fechar"
+        <label
+          className="mono"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 10,
+            letterSpacing: "0.14em",
+            color: "var(--tx-2)",
+            cursor: "pointer",
+            textTransform: "uppercase",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showInvalid}
+            onChange={(e) => setShowInvalid(e.target.checked)}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          Mostrar inválidas
+        </label>
+        {currentT != null && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+            }}
           >
-            ✕
-          </button>
-        </div>
+            Volta atual no trecho:{" "}
+            <span style={{ color: "var(--tx-1)" }}>{fmtRange(currentT)}</span>
+          </span>
+        )}
+      </div>
 
-        <div className="px-5 py-2 border-b hairline flex items-center justify-between">
-          <label className="mono text-[10px] tracking-[0.15em] text-muted flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showInvalid}
-              onChange={(e) => setShowInvalid(e.target.checked)}
-            />
-            MOSTRAR VOLTAS INVALIDAS
-          </label>
-          {currentT != null && (
-            <span className="mono text-[10px] tracking-[0.15em] text-muted">
-              VOLTA ATUAL NO TRECHO: {fmtRange(currentT)}
-            </span>
-          )}
-        </div>
-
-        <div className="overflow-y-auto" style={{ flex: 1 }}>
-          {loading && (
-            <div className="p-8 text-center mono text-[10px] tracking-widest text-muted">
-              CALCULANDO...
-            </div>
-          )}
-          {!loading && sorted.length === 0 && (
-            <div className="p-8 text-center mono text-[10px] tracking-widest text-muted">
-              NENHUMA VOLTA COBRE ESSE TRECHO
-            </div>
-          )}
-          {!loading && sorted.length > 0 && (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr
-                  style={{
-                    background: "var(--surface)",
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  <th
-                    className="mono text-[10px] tracking-[0.15em] text-muted"
-                    style={{ padding: "8px 12px", textAlign: "left" }}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {loading && (
+          <div
+            className="mono"
+            style={{
+              padding: 32,
+              textAlign: "center",
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              color: "var(--tx-3)",
+            }}
+          >
+            CALCULANDO...
+          </div>
+        )}
+        {!loading && sorted.length === 0 && (
+          <div
+            className="mono"
+            style={{
+              padding: 32,
+              textAlign: "center",
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              color: "var(--tx-3)",
+            }}
+          >
+            NENHUMA VOLTA COBRE ESSE TRECHO
+          </div>
+        )}
+        {!loading && sorted.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead
+              style={{
+                position: "sticky",
+                top: 0,
+                background: "var(--bg-1)",
+                zIndex: 1,
+              }}
+            >
+              <tr>
+                <th style={TH_STYLE}>#</th>
+                <th style={TH_STYLE}>Volta</th>
+                <th style={TH_STYLE}>Origem</th>
+                <th style={{ ...TH_STYLE, textAlign: "right" }}>No Trecho</th>
+                <th style={{ ...TH_STYLE, textAlign: "right" }}>Δ vs Atual</th>
+                <th style={{ ...TH_STYLE, textAlign: "right" }}>Δ vs Melhor</th>
+                <th style={TH_STYLE}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row, i) => {
+                const dCur =
+                  currentT != null ? row.timeInRange - currentT : null;
+                const dBest = bestT != null ? row.timeInRange - bestT : null;
+                const isCurrent = row.lapId === currentLapId;
+                return (
+                  <tr
+                    key={row.key}
+                    style={{
+                      borderBottom: "1px solid var(--bd-0)",
+                      background: isCurrent ? "var(--bg-2)" : "transparent",
+                    }}
                   >
-                    #
-                  </th>
-                  <th
-                    className="mono text-[10px] tracking-[0.15em] text-muted"
-                    style={{ padding: "8px 12px", textAlign: "left" }}
-                  >
-                    VOLTA
-                  </th>
-                  <th
-                    className="mono text-[10px] tracking-[0.15em] text-muted"
-                    style={{ padding: "8px 12px", textAlign: "left" }}
-                  >
-                    ORIGEM
-                  </th>
-                  <th
-                    className="mono text-[10px] tracking-[0.15em] text-muted"
-                    style={{ padding: "8px 12px", textAlign: "right" }}
-                  >
-                    NO TRECHO
-                  </th>
-                  <th
-                    className="mono text-[10px] tracking-[0.15em] text-muted"
-                    style={{ padding: "8px 12px", textAlign: "right" }}
-                  >
-                    Δ vs ATUAL
-                  </th>
-                  <th
-                    className="mono text-[10px] tracking-[0.15em] text-muted"
-                    style={{ padding: "8px 12px", textAlign: "right" }}
-                  >
-                    Δ vs MELHOR
-                  </th>
-                  <th style={{ padding: "8px 12px" }} />
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((row, i) => {
-                  const dCur =
-                    currentT != null ? row.timeInRange - currentT : null;
-                  const dBest =
-                    bestT != null ? row.timeInRange - bestT : null;
-                  const isCurrent = row.lapId === currentLapId;
-                  return (
-                    <tr
-                      key={row.key}
-                      style={{
-                        borderBottom: "1px solid var(--border)",
-                        background: isCurrent ? "var(--surface)" : "transparent",
-                      }}
-                    >
-                      <td
-                        className="mono text-[11px]"
-                        style={{ padding: "8px 12px", color: "var(--muted)" }}
-                      >
-                        {i + 1}
-                      </td>
-                      <td
-                        className="mono text-[11px]"
-                        style={{ padding: "8px 12px" }}
-                      >
-                        {row.label}
-                        {row.sublabel ? (
-                          <span
-                            className="text-muted ml-2"
-                            style={{ fontSize: 10 }}
-                          >
-                            {row.sublabel}
-                          </span>
-                        ) : null}
-                        {!row.isValid ? (
-                          <span
-                            className="ml-2"
-                            style={{ color: "var(--accent)", fontSize: 10 }}
-                          >
-                            INV
-                          </span>
-                        ) : null}
-                        {isCurrent ? (
-                          <span
-                            className="ml-2"
-                            style={{ color: "var(--accent)", fontSize: 10 }}
-                          >
-                            ATUAL
-                          </span>
-                        ) : null}
-                      </td>
-                      <td
-                        className="mono text-[10px] text-muted"
-                        style={{ padding: "8px 12px" }}
-                      >
-                        {kindBadge(row.kind)}
-                      </td>
-                      <td
-                        className="mono text-[11px]"
-                        style={{
-                          padding: "8px 12px",
-                          textAlign: "right",
-                          color: i === 0 ? "var(--green)" : undefined,
-                        }}
-                      >
-                        {fmtRange(row.timeInRange)}
-                      </td>
-                      <td
-                        className="mono text-[11px]"
-                        style={{
-                          padding: "8px 12px",
-                          textAlign: "right",
-                          color:
-                            dCur == null || isCurrent
-                              ? "var(--muted)"
-                              : dCur < 0
-                                ? "var(--green)"
-                                : "var(--accent)",
-                        }}
-                      >
-                        {isCurrent ? "—" : fmtDelta(dCur)}
-                      </td>
-                      <td
-                        className="mono text-[11px] text-muted"
-                        style={{ padding: "8px 12px", textAlign: "right" }}
-                      >
-                        {dBest === 0 ? "—" : fmtDelta(dBest)}
-                      </td>
-                      <td
-                        style={{ padding: "8px 12px", textAlign: "right" }}
-                      >
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={isCurrent}
-                          onClick={() => {
-                            onSelect?.(row.lapId);
-                            onClose?.();
-                          }}
+                    <td style={{ ...TD_STYLE, color: "var(--tx-3)" }}>
+                      {i + 1}
+                    </td>
+                    <td style={{ ...TD_STYLE, color: "var(--tx-0)" }}>
+                      <span>{row.label}</span>
+                      {row.sublabel && (
+                        <span
                           style={{
-                            opacity: isCurrent ? 0.4 : 1,
+                            color: "var(--tx-3)",
+                            marginLeft: 8,
                             fontSize: 10,
                           }}
                         >
-                          USAR REF
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="px-5 py-2 border-t hairline mono text-[9px] tracking-[0.15em] text-muted">
-          tempo no trecho = t(fim) − t(inicio) interpolado · independente do
-          delta acumulado
-        </div>
+                          {row.sublabel}
+                        </span>
+                      )}
+                      {!row.isValid && (
+                        <span
+                          style={{
+                            color: "var(--crit)",
+                            marginLeft: 8,
+                            fontSize: 9,
+                            letterSpacing: "0.14em",
+                          }}
+                        >
+                          INV
+                        </span>
+                      )}
+                      {isCurrent && (
+                        <span
+                          style={{
+                            color: "var(--accent)",
+                            marginLeft: 8,
+                            fontSize: 9,
+                            letterSpacing: "0.14em",
+                            fontWeight: 600,
+                          }}
+                        >
+                          ATUAL
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        ...TD_STYLE,
+                        color: "var(--tx-3)",
+                        fontSize: 9,
+                        letterSpacing: "0.14em",
+                      }}
+                    >
+                      {KIND_BADGE[row.kind]}
+                    </td>
+                    <td
+                      style={{
+                        ...TD_STYLE,
+                        textAlign: "right",
+                        color: i === 0 ? "var(--speed)" : "var(--tx-0)",
+                        fontWeight: i === 0 ? 600 : 400,
+                      }}
+                    >
+                      {fmtRange(row.timeInRange)}
+                    </td>
+                    <td
+                      style={{
+                        ...TD_STYLE,
+                        textAlign: "right",
+                        color:
+                          dCur == null || isCurrent
+                            ? "var(--tx-3)"
+                            : dCur < 0
+                            ? "var(--ok)"
+                            : "var(--crit)",
+                        fontWeight: !isCurrent && dCur != null ? 600 : 400,
+                      }}
+                    >
+                      {isCurrent ? "—" : fmtDelta(dCur)}
+                    </td>
+                    <td
+                      style={{
+                        ...TD_STYLE,
+                        textAlign: "right",
+                        color: "var(--tx-2)",
+                      }}
+                    >
+                      {dBest === 0 ? "—" : fmtDelta(dBest)}
+                    </td>
+                    <td style={{ ...TD_STYLE, textAlign: "right" }}>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={isCurrent}
+                        onClick={() => {
+                          onSelect?.(row.lapId);
+                          onClose?.();
+                        }}
+                        style={{
+                          opacity: isCurrent ? 0.4 : 1,
+                          fontSize: 9,
+                          padding: "4px 10px",
+                        }}
+                      >
+                        USAR REF
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

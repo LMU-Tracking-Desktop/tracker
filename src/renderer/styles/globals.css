@@ -1,40 +1,112 @@
 @import "tailwindcss";
 
+/* ============= FONTS ============= */
+@font-face {
+  font-family: "Geist";
+  src: url("../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2")
+    format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2")
+    format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --background: #07070a;
-  --surface: #0e0e12;
-  --surface-2: #141419;
-  --foreground: #ededed;
-  --muted: #8a8a92;
-  --border: #1f1f26;
-  --accent: #ff2d2d;
-  --accent-dim: #8a1515;
-  --yellow: #ffd60a;
-  --green: #30f58a;
-  --purple: #c77dff;
+  /* layered surfaces */
+  --bg-0: #050505;
+  --bg-1: #0a0a0a;
+  --bg-2: #111111;
+  --bg-3: #181818;
+  --bg-4: #222222;
+
+  /* borders */
+  --bd-0: #1c1c1c;
+  --bd-1: #262626;
+  --bd-2: #353535;
+
+  /* text */
+  --tx-0: #fafafa;
+  --tx-1: #b3b3b3;
+  --tx-2: #777777;
+  --tx-3: #4a4a4a;
+
+  /* accent */
+  --accent: #d6ff00;
+  --accent-ink: #0a0a0a;
+  --accent-dim: #6f8500;
+
+  /* status / channels */
+  --crit: #ff3b3b;
+  --crit-soft: rgba(255, 59, 59, 0.12);
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --speed: #c084fc;
+  --throttle: #4ade80;
+  --brake: #ff3b3b;
+  --steer: #4ad6ff;
+  --gear: #fbbf24;
+  --rpm: #fbbf24;
+
+  /* legacy aliases (kept while screens migrate) */
+  --background: var(--bg-0);
+  --surface: var(--bg-1);
+  --surface-2: var(--bg-2);
+  --foreground: var(--tx-0);
+  --muted: var(--tx-2);
+  --border: var(--bd-0);
+  --yellow: var(--accent);
+  --green: var(--ok);
+  --purple: var(--speed);
+
+  /* MoTeC density (fixed) */
+  --pad: 14px;
+  --gap: 10px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
+  --color-background: var(--bg-0);
+  --color-surface: var(--bg-1);
+  --color-surface-2: var(--bg-2);
+  --color-surface-3: var(--bg-3);
+  --color-foreground: var(--tx-0);
+  --color-tx-1: var(--tx-1);
+  --color-muted: var(--tx-2);
+  --color-tx-3: var(--tx-3);
+  --color-border: var(--bd-0);
+  --color-border-1: var(--bd-1);
+  --color-border-2: var(--bd-2);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-accent-dim: var(--accent-dim);
-  --color-yellow: var(--yellow);
-  --color-green: var(--green);
-  --color-purple: var(--purple);
+  --color-crit: var(--crit);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-speed: var(--speed);
+  --color-throttle: var(--throttle);
+  --color-brake: var(--brake);
+  --color-steer: var(--steer);
+  --color-gear: var(--gear);
+  --color-rpm: var(--rpm);
+  --color-yellow: var(--accent);
+  --color-green: var(--ok);
+  --color-purple: var(--speed);
 }
 
 html,
 body,
 #root {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    sans-serif;
+  background: var(--bg-0);
+  color: var(--tx-0);
+  font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  font-feature-settings: "ss01", "cv11";
   margin: 0;
   padding: 0;
   height: 100%;
@@ -45,25 +117,38 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .mono {
-  font-family: ui-monospace, "SF Mono", "Consolas", "Courier New", monospace;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", "Courier New",
+    monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
 .hairline {
-  border-color: var(--border);
+  border-color: var(--bd-0);
 }
 
+/* ============= CHIPS ============= */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  padding: 3px 8px;
+  border: 1px solid var(--bd-0);
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", monospace;
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--tx-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .chip.accent {
@@ -72,22 +157,35 @@ body {
 }
 
 .chip.yellow {
-  color: var(--yellow);
-  border-color: rgba(255, 214, 10, 0.4);
+  color: var(--accent);
+  border-color: rgba(214, 255, 0, 0.4);
 }
 
+.chip.crit {
+  color: var(--crit);
+  border-color: var(--crit);
+}
+
+.chip.solid {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ============= BUTTONS ============= */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--foreground);
-  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  border: 1px solid var(--bd-1);
+  background: transparent;
+  color: var(--tx-1);
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", monospace;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
   transition: border-color 0.1s, background 0.1s, color 0.1s;
@@ -97,28 +195,41 @@ body {
   color: var(--accent);
 }
 
+.btn.solid {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn.solid:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  filter: brightness(1.05);
+}
+
+/* ============= TABLES ============= */
 table.laps {
   width: 100%;
   border-collapse: collapse;
-  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
-  font-size: 12.5px;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 12px;
 }
 table.laps th,
 table.laps td {
-  padding: 10px 12px;
+  padding: 8px 12px;
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--bd-0);
 }
 table.laps th {
   font-weight: 500;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
-  background: var(--surface);
+  color: var(--tx-3);
+  background: var(--bg-1);
 }
 table.laps tbody tr:hover {
-  background: var(--surface);
+  background: var(--bg-2);
 }
 table.laps td.num,
 table.laps th.num {
@@ -126,40 +237,41 @@ table.laps th.num {
   font-variant-numeric: tabular-nums;
 }
 table.laps tr.invalid td {
-  color: #6a6a6a;
+  color: var(--tx-3);
   text-decoration: line-through;
-  text-decoration-color: rgba(255, 45, 45, 0.5);
+  text-decoration-color: rgba(255, 59, 59, 0.5);
 }
 table.laps tr.outlier td {
-  color: #5a5a5a;
+  color: var(--tx-3);
   opacity: 0.55;
 }
 table.laps tr.outlier td.best-time,
 table.laps tr.outlier td.best-sector {
-  color: #5a5a5a;
+  color: var(--tx-3);
 }
 table.laps tr.worst td.worst-col {
-  color: var(--accent);
+  color: var(--crit);
 }
 table.laps td.best-time {
-  color: var(--purple);
+  color: var(--speed);
+  font-weight: 600;
 }
 table.laps td.best-sector {
-  color: var(--purple);
+  color: var(--speed);
 }
 
+/* ============= EFFECTS ============= */
 .stripe-bg {
   background-image: repeating-linear-gradient(
     135deg,
     transparent 0 14px,
-    rgba(255, 45, 45, 0.08) 14px 16px
+    rgba(214, 255, 0, 0.06) 14px 16px
   );
 }
 
 .grid-bg {
-  background-image:
-    linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-image: linear-gradient(var(--bd-0) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bd-0) 1px, transparent 1px);
   background-size: 48px 48px;
   background-position: -1px -1px;
 }
@@ -170,32 +282,38 @@ table.laps td.best-sector {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(7, 7, 10, 0.1) 0%,
-    rgba(7, 7, 10, 0.55) 55%,
-    rgba(7, 7, 10, 0.95) 100%
+    rgba(5, 5, 5, 0.1) 0%,
+    rgba(5, 5, 5, 0.55) 55%,
+    rgba(5, 5, 5, 0.95) 100%
   );
   pointer-events: none;
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 .live-dot {
   width: 6px;
   height: 6px;
   border-radius: 9999px;
-  background: var(--accent);
+  background: var(--ok);
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
 
+/* ============= FORMS ============= */
 .label {
   display: block;
-  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", monospace;
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--tx-2);
   margin-bottom: 6px;
 }
 
@@ -203,11 +321,12 @@ table.laps td.best-sector {
 .input {
   width: 100%;
   padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--foreground);
-  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
-  font-size: 13px;
+  background: var(--bg-1);
+  border: 1px solid var(--bd-1);
+  color: var(--tx-0);
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   outline: none;
 }
 .select:focus,
@@ -215,6 +334,7 @@ table.laps td.best-sector {
   border-color: var(--accent);
 }
 
+/* ============= MISC ============= */
 .punch-badge {
   display: inline-flex;
   align-items: center;
@@ -222,11 +342,11 @@ table.laps td.best-sector {
   width: 16px;
   height: 16px;
   border-radius: 9999px;
-  background: var(--yellow);
+  background: var(--warn);
   color: #1a1400;
   font-weight: 700;
   font-size: 10px;
-  font-family: ui-monospace, "SF Mono", "Consolas", monospace;
+  font-family: "Geist Mono", ui-monospace, "SF Mono", "Consolas", monospace;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -237,15 +357,11 @@ table.laps td.best-sector {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: var(--tx-2);
   background: transparent;
   border: 1px solid transparent;
   opacity: 0;
-  transition:
-    opacity 0.1s,
-    color 0.1s,
-    border-color 0.1s,
-    background 0.1s;
+  transition: opacity 0.1s, color 0.1s, border-color 0.1s, background 0.1s;
   cursor: pointer;
 }
 table.laps tbody tr:hover .delete-btn,
@@ -253,9 +369,9 @@ table.laps tbody tr:hover .delete-btn,
   opacity: 1;
 }
 .delete-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: rgba(255, 45, 45, 0.08);
+  color: var(--crit);
+  border-color: var(--crit);
+  background: rgba(255, 59, 59, 0.08);
 }
 .delete-btn:disabled {
   opacity: 0.6;
@@ -263,16 +379,15 @@ table.laps tbody tr:hover .delete-btn,
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--background);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border: 2px solid var(--background);
+  background: var(--bd-1);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-dim);
+  background: var(--bd-2);
 }

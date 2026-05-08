@@ -82,7 +82,7 @@ export default function SessionLapsTable({
                   : `+${delta.toFixed(3)}`;
           const pct = delta != null ? Math.min(1, delta / maxDelta) : 0;
           const deltaColor =
-            pct < 0.2 ? "var(--green)" : pct < 0.5 ? "var(--yellow)" : "var(--accent)";
+            pct < 0.2 ? "var(--ok)" : pct < 0.5 ? "var(--warn)" : "var(--crit)";
 
           return (
             <tr key={lap.id} className={cls}>

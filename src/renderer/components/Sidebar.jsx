@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import logo from "../../../assets/logo.png";
+import { useLmuStatus } from "../lib/useLmuStatus.js";
 
 const ITEMS = [
   { to: "/", label: "HOME", end: true },
@@ -11,41 +10,142 @@ const ITEMS = [
   { to: "/settings", label: "SETTINGS" },
 ];
 
-export default function Sidebar() {
-  const [version, setVersion] = useState("");
-  useEffect(() => {
-    window.api?.getAppVersion?.().then((v) => setVersion(v || ""));
-  }, []);
+function NavItem({ to, end, label }) {
   return (
-    <aside className="w-56 shrink-0 border-r hairline flex flex-col">
-      <div className="h-14 px-5 flex items-center gap-3 border-b hairline">
-        <img src={logo} alt="LMU" className="w-7 h-7 object-contain" />
-        <span className="mono text-sm tracking-[0.2em]">TIMING</span>
+    <NavLink to={to} end={end}>
+      {({ isActive }) => (
+        <span
+          className="mono"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "12px 16px",
+            borderLeft: "2px solid",
+            borderLeftColor: isActive ? "var(--accent)" : "transparent",
+            color: isActive ? "var(--tx-0)" : "var(--tx-2)",
+            fontSize: 11,
+            letterSpacing: "0.14em",
+            cursor: "pointer",
+            userSelect: "none",
+            textDecoration: "none",
+          }}
+          onMouseEnter={(e) => {
+            if (!isActive) e.currentTarget.style.color = "var(--tx-1)";
+          }}
+          onMouseLeave={(e) => {
+            if (!isActive) e.currentTarget.style.color = "var(--tx-2)";
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              background: isActive ? "var(--accent)" : "var(--bd-2)",
+              flexShrink: 0,
+            }}
+          />
+          {label}
+        </span>
+      )}
+    </NavLink>
+  );
+}
+
+export default function Sidebar() {
+  const lmuConnected = useLmuStatus();
+  return (
+    <aside
+      style={{
+        width: 200,
+        background: "var(--bg-1)",
+        borderRight: "1px solid var(--bd-0)",
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+      }}
+    >
+      {/* Logo */}
+      <div
+        style={{
+          height: 56,
+          padding: "0 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          borderBottom: "1px solid var(--bd-0)",
+          flexShrink: 0,
+        }}
+      >
+        <div
+          className="mono"
+          style={{
+            width: 30,
+            height: 30,
+            background: "var(--accent)",
+            color: "var(--accent-ink)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            flexShrink: 0,
+          }}
+        >
+          LM
+        </div>
+        <span
+          className="mono"
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.22em",
+            color: "var(--tx-1)",
+            fontWeight: 600,
+          }}
+        >
+          TIMING
+        </span>
       </div>
 
-      <nav className="flex-1 py-4">
-        {ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) =>
-              [
-                "block px-5 py-2.5 mono text-[10px] tracking-[0.2em] border-l-2",
-                isActive
-                  ? "text-foreground border-accent bg-surface"
-                  : "text-muted border-transparent hover:text-foreground",
-              ].join(" ")
-            }
-          >
-            {item.label}
-          </NavLink>
+      {/* Nav */}
+      <nav
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          padding: "8px 0",
+          flex: 1,
+        }}
+      >
+        {ITEMS.map((n) => (
+          <NavItem key={n.to} to={n.to} end={n.end} label={n.label} />
         ))}
       </nav>
 
-      <div className="px-5 py-3 border-t hairline flex items-center justify-between">
-        <span className="chip accent">ENDURANCE</span>
-        <span className="chip">v{version || "?"}</span>
+      {/* LMU status */}
+      <div
+        style={{
+          padding: 12,
+          borderTop: "1px solid var(--bd-0)",
+          flexShrink: 0,
+        }}
+      >
+        <div
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-3)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>LMU</span>
+          <span style={{ color: lmuConnected ? "var(--ok)" : "var(--tx-3)" }}>
+            ● {lmuConnected ? "ON" : "OFF"}
+          </span>
+        </div>
       </div>
     </aside>
   );

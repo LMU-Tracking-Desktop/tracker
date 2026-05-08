@@ -10,34 +10,156 @@ import {
   ReferenceLine,
 } from "recharts";
 import TrackSelect from "../components/TrackSelect.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import { Field } from "../components/Field.jsx";
 import { formatLapTime, formatDateTime } from "../lib/format.js";
 import { stats } from "../lib/stats.js";
 import { computeOutlierSet } from "../lib/outlier.js";
 
 const WINDOWS = [
-  { value: "7", label: "7 DIAS" },
-  { value: "30", label: "30 DIAS" },
-  { value: "90", label: "90 DIAS" },
-  { value: "", label: "TUDO" },
+  { value: 7, label: "7D" },
+  { value: 30, label: "30D" },
+  { value: 90, label: "90D" },
+  { value: null, label: "TUDO" },
 ];
 
 const TYPE_ORDER = ["practice", "qualifying", "race"];
 
-function Metric({ label, value, accent }) {
+function StatCard({ label, value, hint, color }) {
   return (
     <div
-      className="p-5 border-r border-b hairline last:border-r-0 flex flex-col gap-2"
-      style={{ background: "var(--surface)" }}
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        padding: "var(--pad)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        minHeight: 92,
+      }}
     >
-      <span className="mono text-[10px] tracking-[0.18em] text-muted">
+      <span
+        className="mono"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+          textTransform: "uppercase",
+        }}
+      >
         {label}
       </span>
       <span
-        className="mono text-2xl md:text-3xl font-semibold tabular-nums"
-        style={{ color: accent ? "var(--accent)" : "var(--foreground)" }}
+        className="mono"
+        style={{
+          fontSize: 26,
+          fontWeight: 600,
+          color: color || "var(--tx-0)",
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
       >
         {value}
       </span>
+      {hint && (
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-2)",
+            textTransform: "uppercase",
+          }}
+        >
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Panel({ title, right, children, height }) {
+  return (
+    <div
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--bd-0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.14em",
+            color: "var(--tx-1)",
+            textTransform: "uppercase",
+          }}
+        >
+          {title}
+        </span>
+        {right && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+            }}
+          >
+            {right}
+          </span>
+        )}
+      </div>
+      <div style={{ height: height || "auto", padding: 12 }}>{children}</div>
+    </div>
+  );
+}
+
+function WindowSegmented({ value, onChange }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        border: "1px solid var(--bd-1)",
+      }}
+    >
+      {WINDOWS.map((w, i) => {
+        const active = value === w.value;
+        return (
+          <button
+            key={w.label}
+            type="button"
+            onClick={() => onChange(w.value)}
+            className="mono"
+            style={{
+              padding: "8px 12px",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              background: active ? "var(--bg-3)" : "transparent",
+              color: active ? "var(--accent)" : "var(--tx-2)",
+              border: "none",
+              borderRight:
+                i < WINDOWS.length - 1 ? "1px solid var(--bd-1)" : "none",
+              fontWeight: active ? 600 : 400,
+              cursor: "pointer",
+            }}
+          >
+            {w.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -64,9 +186,7 @@ function computeTypeStats(laps) {
       stats: s,
     });
   }
-  rows.sort(
-    (a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type)
-  );
+  rows.sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
   return rows;
 }
 
@@ -167,219 +287,361 @@ export default function Dashboard() {
     };
   }, [data, outlierPct]);
 
-  return (
-    <div className="p-8">
-      <div className="max-w-[1400px] mx-auto space-y-8">
-        <div>
-          <div className="mb-6">
-            <span className="chip">DASHBOARD</span>
-          </div>
-          <h1 className="text-3xl font-semibold">Analise</h1>
-        </div>
+  const empty = (label) => (
+    <div
+      style={{
+        border: "1px solid var(--bd-0)",
+        background: "var(--bg-1)",
+        padding: "48px var(--pad)",
+        textAlign: "center",
+        margin: "0 var(--pad) var(--pad)",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
 
-        <section className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 md:items-end">
-          <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
-          <div className="flex items-end gap-2">
-            {WINDOWS.map((w) => {
-              const active =
-                (w.value === "" && windowDays == null) ||
-                (w.value !== "" && windowDays === parseInt(w.value, 10));
-              return (
-                <button
-                  key={w.label}
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    setWindowDays(w.value === "" ? null : parseInt(w.value, 10))
-                  }
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[{ label: "DASHBOARD" }, { label: "ANÁLISE" }]}
+        actions={<WindowSegmented value={windowDays} onChange={setWindowDays} />}
+      />
+
+      {/* Filter */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 360px) 1fr",
+          gap: "var(--gap)",
+          padding: "var(--pad)",
+        }}
+      >
+        <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
+      </div>
+
+      {!trackId ? (
+        empty("SELECIONE UMA PISTA")
+      ) : loading ? (
+        empty("CARREGANDO...")
+      ) : !analysis ? (
+        empty("SEM VOLTAS VÁLIDAS NESSA JANELA")
+      ) : (
+        <>
+          {/* Stats row */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "var(--gap)",
+              padding: "0 var(--pad) var(--pad)",
+            }}
+          >
+            <StatCard
+              label="Melhor Volta"
+              value={formatLapTime(analysis.s.min)}
+              color="var(--speed)"
+              hint={`${analysis.s.count} válidas`}
+            />
+            <StatCard
+              label="Média"
+              value={formatLapTime(analysis.s.mean)}
+              hint={`Δ +${(analysis.s.mean - analysis.s.min).toFixed(2)}s`}
+            />
+            <StatCard
+              label="Mediana"
+              value={formatLapTime(analysis.s.median)}
+              hint="Tendência central"
+            />
+            <StatCard
+              label="σ Consistência"
+              value={`${analysis.s.stdDev.toFixed(2)}s`}
+              hint={
+                analysis.s.stdDev < 1
+                  ? "Excelente"
+                  : analysis.s.stdDev < 2
+                  ? "Boa"
+                  : "Instável"
+              }
+              color={
+                analysis.s.stdDev < 1
+                  ? "var(--ok)"
+                  : analysis.s.stdDev >= 2
+                  ? "var(--crit)"
+                  : "var(--tx-0)"
+              }
+            />
+          </div>
+
+          {/* Lap evolution chart */}
+          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
+            <Panel
+              title="Evolução · Todas as Voltas"
+              right={
+                <>
+                  MÉDIA {formatLapTime(analysis.s.mean)}
+                  {analysis.outlierCount > 0
+                    ? ` · ${analysis.outlierCount} OUTLIER${
+                        analysis.outlierCount > 1 ? "S" : ""
+                      } DESCONSIDERADA${analysis.outlierCount > 1 ? "S" : ""}`
+                    : ""}
+                </>
+              }
+              height={320}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={analysis.chartData}
+                  margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
+                >
+                  <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
+                  <XAxis
+                    dataKey="idx"
+                    stroke="var(--tx-3)"
+                    tick={{ fontSize: 10, fontFamily: "Geist Mono" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    stroke="var(--tx-3)"
+                    tick={{ fontSize: 10, fontFamily: "Geist Mono" }}
+                    tickLine={false}
+                    tickFormatter={(v) => formatLapTime(v)}
+                    width={70}
+                    domain={analysis.yDomain}
+                    allowDataOverflow={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--bg-3)",
+                      border: "1px solid var(--bd-2)",
+                      fontSize: 11,
+                      fontFamily: "Geist Mono",
+                      letterSpacing: "0.04em",
+                    }}
+                    labelStyle={{ color: "var(--tx-3)" }}
+                    itemStyle={{ color: "var(--tx-0)" }}
+                    labelFormatter={(l, items) =>
+                      items?.[0]?.payload?.when ?? `#${l}`
+                    }
+                    formatter={(v) => [v ? formatLapTime(v) : "—", "tempo"]}
+                  />
+                  <ReferenceLine
+                    y={analysis.s.mean}
+                    stroke="var(--tx-3)"
+                    strokeDasharray="4 4"
+                  />
+                  <ReferenceLine
+                    y={analysis.s.min}
+                    stroke="var(--speed)"
+                    strokeDasharray="2 4"
+                    strokeOpacity={0.5}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="lapTime"
+                    stroke="var(--crit)"
+                    strokeWidth={1.4}
+                    dot={{ r: 2.5, fill: "var(--crit)", strokeWidth: 0 }}
+                    activeDot={{ r: 4, fill: "var(--accent)" }}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </Panel>
+          </div>
+
+          {/* Per-type cards */}
+          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
+            <div
+              style={{
+                marginBottom: 8,
+                display: "flex",
+                alignItems: "baseline",
+                gap: 12,
+              }}
+            >
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  color: "var(--tx-1)",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
+                Ritmo por Tipo
+              </span>
+            </div>
+            {analysis.byType.length === 0 ? (
+              <div
+                style={{
+                  border: "1px solid var(--bd-0)",
+                  background: "var(--bg-1)",
+                  padding: "32px var(--pad)",
+                  textAlign: "center",
+                }}
+              >
+                <span
+                  className="mono"
                   style={{
-                    color: active ? "var(--accent)" : undefined,
-                    borderColor: active ? "var(--accent)" : undefined,
+                    fontSize: 10,
+                    letterSpacing: "0.18em",
+                    color: "var(--tx-3)",
                   }}
                 >
-                  {w.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {!trackId ? (
-          <section className="border hairline stripe-bg p-12 text-center">
-            <div className="mono text-xs tracking-[0.2em] text-muted">
-              SELECIONE UMA PISTA
-            </div>
-          </section>
-        ) : loading ? (
-          <section className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-            CARREGANDO...
-          </section>
-        ) : !analysis ? (
-          <section className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-            SEM VOLTAS VALIDAS NESSA JANELA
-          </section>
-        ) : (
-          <>
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-0 border hairline">
-              <Metric
-                label="MELHOR VOLTA"
-                value={formatLapTime(analysis.s.min)}
-                accent
-              />
-              <Metric label="MEDIA" value={formatLapTime(analysis.s.mean)} />
-              <Metric
-                label="VALIDAS"
-                value={String(analysis.s.count).padStart(3, "0")}
-              />
-              <Metric
-                label="σ"
-                value={`${analysis.s.stdDev.toFixed(2)}s`}
-              />
-            </section>
-
-            <section
-              className="border hairline"
-              style={{ background: "var(--surface)" }}
-            >
-              <div className="px-4 py-3 border-b hairline flex items-center justify-between">
-                <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                  EVOLUCAO · TODAS AS VOLTAS NO PERIODO
-                  {analysis.outlierCount > 0
-                    ? ` · ${analysis.outlierCount} OUTLIER(S) DESCONSIDERADA(S)`
-                    : ""}
-                </span>
-                <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                  MEDIA {formatLapTime(analysis.s.mean)}
-                </span>
-              </div>
-              <div className="h-[320px] p-3">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={analysis.chartData}
-                    margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
-                  >
-                    <CartesianGrid
-                      stroke="var(--border)"
-                      strokeDasharray="2 4"
-                    />
-                    <XAxis
-                      dataKey="idx"
-                      stroke="var(--muted)"
-                      tick={{ fontSize: 11 }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      stroke="var(--muted)"
-                      tick={{ fontSize: 11 }}
-                      tickLine={false}
-                      tickFormatter={(v) => formatLapTime(v)}
-                      width={70}
-                      domain={analysis.yDomain}
-                      allowDataOverflow={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--surface-2)",
-                        border: "1px solid var(--border)",
-                        fontSize: 12,
-                      }}
-                      labelStyle={{ color: "var(--muted)" }}
-                      labelFormatter={(l, items) =>
-                        items?.[0]?.payload?.when ?? `#${l}`
-                      }
-                      formatter={(v) => [v ? formatLapTime(v) : "—", "tempo"]}
-                    />
-                    <ReferenceLine
-                      y={analysis.s.mean}
-                      stroke="var(--muted)"
-                      strokeDasharray="4 4"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="lapTime"
-                      stroke="var(--accent)"
-                      strokeWidth={2}
-                      dot={{ r: 2.5, fill: "var(--accent)" }}
-                      connectNulls
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-3 flex items-baseline gap-3 flex-wrap">
-                <h2 className="text-lg font-semibold">Ritmo por tipo</h2>
-              </div>
-              {analysis.byType.length === 0 ? (
-                <div className="border hairline p-8 text-center text-muted mono text-xs tracking-widest">
                   SEM DADOS POR TIPO
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border hairline">
-                  {analysis.byType.map((r) => {
-                    const rate = r.invalidRate;
-                    const rateColor =
-                      rate <= 0.05
-                        ? "var(--green)"
-                        : rate <= 0.15
-                          ? "var(--yellow)"
-                          : "var(--accent)";
-                    return (
-                      <div
-                        key={r.type}
-                        className="p-5 border-r border-b hairline last:border-r-0 flex flex-col gap-3"
-                        style={{ background: "var(--surface)" }}
-                      >
-                        <span className="mono text-[11px] tracking-[0.2em] text-muted">
-                          {r.type.toUpperCase()}
-                        </span>
-                        <span
-                          className="mono text-3xl font-semibold tabular-nums"
-                          style={{ color: "var(--accent)" }}
-                        >
-                          {formatLapTime(r.stats.median)}
-                        </span>
-                        <div className="mono text-[11px] text-muted tracking-wider flex items-center gap-3 flex-wrap">
-                          <span>melhor {formatLapTime(r.stats.min)}</span>
-                          <span>·</span>
-                          <span>σ {r.stats.stdDev.toFixed(2)}s</span>
-                        </div>
-                        <div className="mono text-[10px] tracking-widest text-muted flex items-center justify-between">
-                          <span>
-                            {r.validCount} validas · {r.invalidCount} invalidas
-                          </span>
-                          <span style={{ color: rateColor }}>
-                            {(rate * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            <section>
-              <div className="mb-3 flex items-baseline gap-3 flex-wrap">
-                <h2 className="text-lg font-semibold">
-                  Consistencia por carro
-                </h2>
-                <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                  MELHOR MEDIANA NO TOPO
                 </span>
               </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${Math.min(
+                    3,
+                    analysis.byType.length
+                  )}, 1fr)`,
+                  gap: "var(--gap)",
+                }}
+              >
+                {analysis.byType.map((r) => {
+                  const rate = r.invalidRate;
+                  const rateColor =
+                    rate <= 0.05
+                      ? "var(--ok)"
+                      : rate <= 0.15
+                      ? "var(--warn)"
+                      : "var(--crit)";
+                  return (
+                    <div
+                      key={r.type}
+                      style={{
+                        background: "var(--bg-1)",
+                        border: "1px solid var(--bd-0)",
+                        padding: "var(--pad)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                      }}
+                    >
+                      <span
+                        className="mono"
+                        style={{
+                          fontSize: 9,
+                          letterSpacing: "0.18em",
+                          color: "var(--tx-3)",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {r.type}
+                      </span>
+                      <span
+                        className="mono"
+                        style={{
+                          fontSize: 26,
+                          fontWeight: 600,
+                          color: "var(--tx-0)",
+                          letterSpacing: "-0.01em",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {formatLapTime(r.stats.median)}
+                      </span>
+                      <div
+                        className="mono"
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          fontSize: 10,
+                          color: "var(--tx-2)",
+                          letterSpacing: "0.06em",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>
+                          MELHOR{" "}
+                          <span style={{ color: "var(--speed)" }}>
+                            {formatLapTime(r.stats.min)}
+                          </span>
+                        </span>
+                        <span style={{ color: "var(--tx-3)" }}>·</span>
+                        <span>σ {r.stats.stdDev.toFixed(2)}s</span>
+                      </div>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 9,
+                          letterSpacing: "0.14em",
+                          color: "var(--tx-3)",
+                          textTransform: "uppercase",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          paddingTop: 6,
+                          borderTop: "1px solid var(--bd-0)",
+                        }}
+                      >
+                        <span>
+                          {r.validCount} válidas · {r.invalidCount} inválidas
+                        </span>
+                        <span style={{ color: rateColor }}>
+                          {(rate * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Per-car table */}
+          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
+            <Panel
+              title="Consistência por Carro"
+              right="MELHOR MEDIANA NO TOPO"
+            >
               {analysis.byCar.length === 0 ? (
-                <div className="border hairline p-8 text-center text-muted mono text-xs tracking-widest">
-                  PRECISA DE 3+ VOLTAS VALIDAS POR CARRO
+                <div
+                  style={{
+                    padding: "32px var(--pad)",
+                    textAlign: "center",
+                  }}
+                >
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: "0.18em",
+                      color: "var(--tx-3)",
+                    }}
+                  >
+                    PRECISA DE 3+ VOLTAS VÁLIDAS POR CARRO
+                  </span>
                 </div>
               ) : (
-                <section className="border hairline overflow-x-auto">
+                <div style={{ overflowX: "auto" }}>
                   <table className="laps">
                     <thead>
                       <tr>
                         <th>Carro</th>
+                        <th>Classe</th>
                         <th className="num">Voltas</th>
                         <th className="num">Melhor</th>
                         <th className="num">Mediana</th>
@@ -387,42 +649,75 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {analysis.byCar.map((r, i) => (
-                        <tr key={r.car}>
-                          <td>
-                            {r.car}
-                            <span className="text-muted ml-2">
-                              [{r.carClass}]
-                            </span>
-                            {i === 0 && (
-                              <span className="chip accent ml-2">TOP</span>
-                            )}
-                          </td>
-                          <td className="num">{r.count}</td>
-                          <td className="num">
-                            {formatLapTime(r.stats.min)}
-                          </td>
-                          <td
-                            className="num"
-                            style={{
-                              color: i === 0 ? "var(--accent)" : undefined,
-                            }}
-                          >
-                            {formatLapTime(r.stats.median)}
-                          </td>
-                          <td className="num">
-                            {r.stats.stdDev.toFixed(2)}s
-                          </td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        const minOfMins = Math.min(
+                          ...analysis.byCar.map((r) => r.stats.min)
+                        );
+                        return analysis.byCar.map((r, i) => {
+                          const isFastest = r.stats.min === minOfMins;
+                          return (
+                            <tr key={r.car}>
+                              <td>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                  }}
+                                >
+                                  <span>{r.car}</span>
+                                  {i === 0 && (
+                                    <span className="chip accent">TOP</span>
+                                  )}
+                                </span>
+                              </td>
+                              <td style={{ color: "var(--tx-2)" }}>
+                                {r.carClass}
+                              </td>
+                              <td
+                                className="num"
+                                style={{ color: "var(--tx-1)" }}
+                              >
+                                {r.count}
+                              </td>
+                              <td
+                                className="num"
+                                style={{
+                                  color: isFastest
+                                    ? "var(--speed)"
+                                    : "var(--tx-0)",
+                                  fontWeight: isFastest ? 600 : 400,
+                                }}
+                              >
+                                {formatLapTime(r.stats.min)}
+                              </td>
+                              <td
+                                className="num"
+                                style={{
+                                  color: i === 0 ? "var(--tx-0)" : "var(--tx-1)",
+                                  fontWeight: i === 0 ? 600 : 400,
+                                }}
+                              >
+                                {formatLapTime(r.stats.median)}
+                              </td>
+                              <td
+                                className="num"
+                                style={{ color: "var(--tx-2)" }}
+                              >
+                                {r.stats.stdDev.toFixed(2)}s
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                   </table>
-                </section>
+                </div>
               )}
-            </section>
-          </>
-        )}
-      </div>
+            </Panel>
+          </div>
+        </>
+      )}
     </div>
   );
 }

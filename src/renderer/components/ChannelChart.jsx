@@ -107,18 +107,44 @@ function ChannelChartBase({
 
   return (
     <div
-      className="border hairline flex flex-col"
-      style={{ background: "var(--surface)" }}
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
-      <div className="px-4 py-2 border-b hairline flex items-center justify-between">
+      <div
+        style={{
+          padding: "8px 14px",
+          borderBottom: "1px solid var(--bd-0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <span
-          className="mono text-[10px] tracking-[0.2em]"
-          style={{ color }}
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.16em",
+            color,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
         >
           {title}
         </span>
         {subtitle && (
-          <span className="mono text-[10px] tracking-[0.2em] text-muted">
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+            }}
+          >
             {subtitle}
           </span>
         )}
@@ -133,20 +159,20 @@ function ChannelChartBase({
             onMouseUp={handleUp}
             onMouseLeave={handleLeave}
           >
-            <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" />
+            <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
             <XAxis
               dataKey="d"
               type="number"
               domain={zoomRange || ["dataMin", "dataMax"]}
-              stroke="var(--muted)"
-              tick={{ fontSize: 10 }}
+              stroke="var(--tx-3)"
+              tick={{ fontSize: 9, fontFamily: "Geist Mono", fill: "var(--tx-3)" }}
               tickLine={false}
               tickFormatter={(v) => `${Math.round(v)}m`}
               allowDataOverflow
             />
             <YAxis
-              stroke="var(--muted)"
-              tick={{ fontSize: 10 }}
+              stroke="var(--tx-3)"
+              tick={{ fontSize: 9, fontFamily: "Geist Mono", fill: "var(--tx-3)" }}
               tickLine={false}
               domain={yDomain}
               width={50}
@@ -154,15 +180,18 @@ function ChannelChartBase({
             />
             <Tooltip
               contentStyle={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                fontSize: 12,
+                background: "var(--bg-3)",
+                border: "1px solid var(--bd-2)",
+                fontSize: 11,
+                fontFamily: "Geist Mono",
+                letterSpacing: "0.04em",
               }}
-              labelStyle={{ color: "var(--muted)" }}
+              labelStyle={{ color: "var(--tx-3)" }}
+              itemStyle={{ color: "var(--tx-0)" }}
               labelFormatter={(v) => `${Math.round(v)}m`}
               formatter={(v, name) => [
                 v != null ? fmt(v) : "—",
-                name === "v_ref" ? "referencia" : "atual",
+                name === "v_ref" ? "referência" : "atual",
               ]}
             />
             {drag && (
@@ -178,32 +207,30 @@ function ChannelChartBase({
             {sectorMarkers?.s1 != null && (
               <ReferenceLine
                 x={sectorMarkers.s1}
-                stroke="#ffd60a"
+                stroke="var(--warn)"
                 strokeOpacity={0.55}
                 strokeDasharray="4 3"
                 label={{
                   value: "S1",
                   position: "insideTopLeft",
-                  fill: "#ffd60a",
-                  fontSize: 10,
-                  fontFamily:
-                    'ui-monospace, "SF Mono", "Consolas", monospace',
+                  fill: "var(--warn)",
+                  fontSize: 9,
+                  fontFamily: "Geist Mono",
                 }}
               />
             )}
             {sectorMarkers?.s2 != null && (
               <ReferenceLine
                 x={sectorMarkers.s2}
-                stroke="#ffd60a"
+                stroke="var(--warn)"
                 strokeOpacity={0.55}
                 strokeDasharray="4 3"
                 label={{
                   value: "S2",
                   position: "insideTopLeft",
-                  fill: "#ffd60a",
-                  fontSize: 10,
-                  fontFamily:
-                    'ui-monospace, "SF Mono", "Consolas", monospace',
+                  fill: "var(--warn)",
+                  fontSize: 9,
+                  fontFamily: "Geist Mono",
                 }}
               />
             )}
@@ -211,8 +238,8 @@ function ChannelChartBase({
               <Line
                 type={lineType}
                 dataKey="v_ref"
-                stroke="#8a8a92"
-                strokeWidth={1.2}
+                stroke="var(--tx-2)"
+                strokeWidth={1}
                 strokeDasharray="3 3"
                 dot={false}
                 isAnimationActive={false}
@@ -223,7 +250,7 @@ function ChannelChartBase({
               type={lineType}
               dataKey="v"
               stroke={color}
-              strokeWidth={2}
+              strokeWidth={1.6}
               dot={false}
               isAnimationActive={false}
               name="v"

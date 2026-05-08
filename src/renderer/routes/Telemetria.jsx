@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   useParams,
-  Link,
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
@@ -13,6 +12,7 @@ import ImportLapModal from "../components/ImportLapModal.jsx";
 import CopyLapButton from "../components/CopyLapButton.jsx";
 import BestInRangePanel from "../components/BestInRangePanel.jsx";
 import LapPickerModal from "../components/LapPickerModal.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import { downsample, distanceAtTime } from "../lib/telemetry.js";
 
 function fmtLapTime(t) {
@@ -20,6 +20,11 @@ function fmtLapTime(t) {
   const m = Math.floor(t / 60);
   const s = (t % 60).toFixed(3).padStart(6, "0");
   return `${m}:${s}`;
+}
+
+function fmtSector(t) {
+  if (t == null || t <= 0) return "—";
+  return t.toFixed(3);
 }
 
 function describeLap({ lapId, sessionLaps, otherLaps, importedLaps }) {
@@ -40,22 +45,92 @@ function describeLap({ lapId, sessionLaps, otherLaps, importedLaps }) {
   return "—";
 }
 
-function LapPickerButton({ label, text, onClick }) {
+function LapPickerButton({ label, text, onClick, accent }) {
   return (
-    <label className="flex items-center gap-2">
-      <span className="mono text-[10px] tracking-[0.2em] text-muted">
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: "var(--tx-2)",
+          textTransform: "uppercase",
+        }}
+      >
         {label}
       </span>
       <button
         type="button"
-        className="btn"
         onClick={onClick}
-        style={{ minWidth: 220, justifyContent: "flex-start", textAlign: "left" }}
+        className="mono"
+        style={{
+          padding: "10px 12px",
+          background: "var(--bg-1)",
+          color: accent ? "var(--accent)" : "var(--tx-0)",
+          border: "1px solid",
+          borderColor: accent ? "var(--accent)" : "var(--bd-1)",
+          fontSize: 12,
+          letterSpacing: "0.04em",
+          textAlign: "left",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
       >
-        {text}
-        <span className="ml-2 text-muted">▾</span>
+        <span>{text}</span>
+        <span style={{ color: "var(--tx-3)" }}>▾</span>
       </button>
-    </label>
+    </div>
+  );
+}
+
+function SidePanel({ title, right, children }) {
+  return (
+    <div
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+      }}
+    >
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--bd-0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.14em",
+            color: "var(--tx-1)",
+            textTransform: "uppercase",
+            fontWeight: 600,
+          }}
+        >
+          {title}
+        </span>
+        {right && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 9,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+            }}
+          >
+            {right}
+          </span>
+        )}
+      </div>
+      <div style={{ padding: "var(--pad)" }}>{children}</div>
+    </div>
   );
 }
 
@@ -102,9 +177,8 @@ export default function Telemetria() {
   const [importedLaps, setImportedLaps] = useState([]);
   const [showImport, setShowImport] = useState(false);
   const [showBestInRange, setShowBestInRange] = useState(false);
-  const [pickerMode, setPickerMode] = useState(null); // null | "primary" | "reference"
+  const [pickerMode, setPickerMode] = useState(null);
 
-  // Load session data (uma vez — nao precisa polling aqui)
   useEffect(() => {
     let cancelled = false;
     window.api?.getSessionDetail?.(sessionId).then((d) => {
@@ -118,7 +192,6 @@ export default function Telemetria() {
     };
   }, [sessionId]);
 
-  // Top laps de outras sessoes (mesma pista/classe)
   useEffect(() => {
     if (!data?.session) return;
     window.api
@@ -131,7 +204,6 @@ export default function Telemetria() {
       .then((r) => setOtherLaps(r || []));
   }, [data?.session?.id, data?.session?.trackId]);
 
-  // Voltas importadas
   const loadImported = () => {
     if (!data?.session?.track?.name) return;
     window.api
@@ -170,7 +242,6 @@ export default function Telemetria() {
     return { s1, s2 };
   }, [telemetry, data?.laps, selectedLapId]);
 
-  // Auto-seleciona melhor volta quando dados carregam
   useEffect(() => {
     if (!data?.laps || selectedLapId) return;
     const withTelemetry = data.laps.filter((l) => l.hasTelemetry && l.isValid);
@@ -233,73 +304,139 @@ export default function Telemetria() {
     };
   }, [referenceLapId, selectedLapId, telemetry]);
 
+  const emptyBox = (label) => (
+    <div
+      style={{
+        margin: "var(--pad)",
+        border: "1px solid var(--bd-0)",
+        background: "var(--bg-1)",
+        padding: "48px var(--pad)",
+        textAlign: "center",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-          CARREGANDO...
-        </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          overflow: "auto",
+        }}
+      >
+        <PageHeader
+          crumbs={[
+            { label: "SESSÕES", onClick: () => navigate("/sessoes") },
+            { label: "TELEMETRIA" },
+          ]}
+        />
+        {emptyBox("CARREGANDO...")}
       </div>
     );
   }
   if (!data) {
     return (
-      <div className="p-8">
-        <div className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-          SESSAO NAO ENCONTRADA
-        </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          overflow: "auto",
+        }}
+      >
+        <PageHeader
+          crumbs={[
+            { label: "SESSÕES", onClick: () => navigate("/sessoes") },
+            { label: "TELEMETRIA" },
+          ]}
+        />
+        {emptyBox("SESSÃO NÃO ENCONTRADA")}
       </div>
     );
   }
 
   const { session } = data;
   const selectedLap = data.laps.find((l) => l.id === selectedLapId);
+  const referenceLap =
+    referenceLapId && !referenceLapId.startsWith("imp:")
+      ? data.laps.find((l) => l.id === referenceLapId) ||
+        otherLaps.find((l) => l.id === referenceLapId)
+      : null;
+
+  // Metricas uteis: % do tempo em full throttle / em frenagem, vel media,
+  // vel max/min, rpm max. Os MAX de pedais nao dizem nada (sempre 100%).
+  const channelStats = telemetry
+    ? (() => {
+        const n = telemetry.length;
+        let throttleSum = 0;
+        let fullThrottleN = 0;
+        let brakingN = 0;
+        let speedSum = 0;
+        let speedSamples = 0;
+        let vMax = 0;
+        let vMin = Infinity;
+        let rpmMax = 0;
+        for (const s of telemetry) {
+          const th = s.th ?? 0;
+          const br = s.br ?? 0;
+          const v = s.v;
+          const rpm = s.rpm ?? 0;
+          throttleSum += th;
+          if (th >= 0.95) fullThrottleN++;
+          if (br >= 0.05) brakingN++;
+          if (v != null) {
+            if (v > vMax) vMax = v;
+            if (v > 5 && v < vMin) vMin = v;
+            speedSum += v;
+            speedSamples++;
+          }
+          if (rpm > rpmMax) rpmMax = rpm;
+        }
+        return {
+          fullThrottlePct: n ? fullThrottleN / n : 0,
+          brakingPct: n ? brakingN / n : 0,
+          throttleAvgPct: n ? throttleSum / n : 0,
+          vAvg: speedSamples ? speedSum / speedSamples : 0,
+          vMax,
+          vMin: isFinite(vMin) ? vMin : 0,
+          rpmMax,
+        };
+      })()
+    : null;
 
   return (
-    <div className="p-8">
-      <div className="max-w-[1400px] mx-auto space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <Link
-            to={`/sessoes/${sessionId}`}
-            className="mono text-[10px] tracking-[0.2em] text-muted hover:text-accent"
-          >
-            ← VOLTAR À SESSÃO
-          </Link>
-          <div className="flex items-center gap-3">
-            <span className="chip accent">TELEMETRIA</span>
-            <span className="mono text-[11px] tracking-[0.15em] text-muted">
-              {session.track?.name || "—"} · {session.car || "—"}
-            </span>
-          </div>
-        </div>
-
-        {/* Pickers + importar */}
-        <div className="flex items-center justify-between gap-3 flex-wrap border hairline p-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <LapPickerButton
-              label="VOLTA"
-              onClick={() => setPickerMode("primary")}
-              text={describeLap({
-                lapId: selectedLapId,
-                sessionLaps: data.laps,
-                otherLaps,
-                importedLaps,
-              })}
-            />
-            <LapPickerButton
-              label="COMPARAR COM"
-              onClick={() => setPickerMode("reference")}
-              text={
-                referenceLapId
-                  ? describeLap({
-                      lapId: referenceLapId,
-                      sessionLaps: data.laps,
-                      otherLaps,
-                      importedLaps,
-                    })
-                  : "— nenhuma —"
-              }
-            />
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[
+          { label: "SESSÕES", onClick: () => navigate("/sessoes") },
+          {
+            label: session.track?.name || "—",
+            onClick: () => navigate(`/sessoes/${sessionId}`),
+          },
+          { label: "TELEMETRIA" },
+        ]}
+        actions={
+          <div style={{ display: "flex", gap: 6 }}>
             <button
               type="button"
               className="btn"
@@ -308,9 +445,6 @@ export default function Telemetria() {
             >
               IMPORTAR
             </button>
-          </div>
-          <div className="flex items-center gap-2">
-            {selectedLap && <CopyLapButton lap={selectedLap} session={session} />}
             <button
               type="button"
               className="btn"
@@ -321,12 +455,13 @@ export default function Telemetria() {
                 navigate(`/replay/${selectedLapId}${q}`);
               }}
               disabled={!selectedLapId}
+              style={{ opacity: !selectedLapId ? 0.4 : 1 }}
             >
               ▶ 2D
             </button>
             <button
               type="button"
-              className="btn"
+              className="btn solid"
               onClick={() => {
                 const q = referenceLapId
                   ? `?mode=3d&ref=${encodeURIComponent(referenceLapId)}`
@@ -334,146 +469,237 @@ export default function Telemetria() {
                 navigate(`/replay/${selectedLapId}${q}`);
               }}
               disabled={!selectedLapId}
+              style={{ opacity: !selectedLapId ? 0.4 : 1 }}
             >
               ▶ 3D
             </button>
           </div>
-        </div>
+        }
+      />
 
-        {loadingTelem ? (
-          <div className="border hairline p-8 text-center text-muted mono text-xs tracking-widest">
-            CARREGANDO TELEMETRIA...
+      {/* Lap pickers */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr auto",
+          gap: "var(--gap)",
+          padding: "var(--pad)",
+          alignItems: "end",
+        }}
+      >
+        <LapPickerButton
+          label="Volta"
+          onClick={() => setPickerMode("primary")}
+          text={describeLap({
+            lapId: selectedLapId,
+            sessionLaps: data.laps,
+            otherLaps,
+            importedLaps,
+          })}
+        />
+        <LapPickerButton
+          label="Comparar com"
+          accent={!!referenceLapId}
+          onClick={() => setPickerMode("reference")}
+          text={
+            referenceLapId
+              ? describeLap({
+                  lapId: referenceLapId,
+                  sessionLaps: data.laps,
+                  otherLaps,
+                  importedLaps,
+                })
+              : "— nenhuma —"
+          }
+        />
+        <div style={{ display: "flex", alignItems: "end", gap: 6 }}>
+          {selectedLap && (
+            <CopyLapButton lap={selectedLap} session={session} />
+          )}
+        </div>
+      </div>
+
+      {/* Zoom indicator bar */}
+      {zoomRange && (
+        <div
+          style={{
+            margin: "0 var(--pad) var(--pad)",
+            padding: "10px 14px",
+            border: "1px solid var(--accent)",
+            background: "rgba(214, 255, 0, 0.04)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--accent)",
+              textTransform: "uppercase",
+              fontWeight: 600,
+            }}
+          >
+            ZOOM · {Math.round(zoomRange[0])}m → {Math.round(zoomRange[1])}m
+            ·{" "}
+            {Math.round(zoomRange[1] - zoomRange[0])}m
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowBestInRange(true)}
+              title="Voltas mais rápidas neste trecho"
+            >
+              🔍 MELHORES NESTE TRECHO
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setZoomRange(null)}
+            >
+              RESET ZOOM
+            </button>
           </div>
-        ) : telemetry ? (
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-4">
-            <div className="space-y-3 min-w-0">
-              {zoomRange && (
-                <div className="flex items-center justify-between border hairline px-4 py-2">
-                  <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                    ZOOM · {Math.round(zoomRange[0])}m →{" "}
-                    {Math.round(zoomRange[1])}m
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => setShowBestInRange(true)}
-                      title="Voltas mais rapidas neste trecho da pista"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      🔍 MELHORES NESTE TRECHO
-                    </button>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => setZoomRange(null)}
-                    >
-                      RESET ZOOM
-                    </button>
-                  </div>
-                </div>
-              )}
-              {referenceDs && !loadingRef && (
-                <>
-                  <DeltaChart
-                    current={telemetryDs}
-                    reference={referenceDs}
-                    onHover={setHoverDistance}
-                    onZoomChange={setZoomRange}
-                    zoomRange={zoomRange}
-                    sectorMarkers={sectorMarkers}
-                  />
-                  <SpeedDeltaChart
-                    current={telemetryDs}
-                    reference={referenceDs}
-                    onHover={setHoverDistance}
-                    onZoomChange={setZoomRange}
-                    zoomRange={zoomRange}
-                    sectorMarkers={sectorMarkers}
-                  />
-                </>
-              )}
-              <ChannelChart
-                title="THROTTLE"
-                subtitle="%"
-                channelKey="th"
-                color="#30f58a"
-                yDomain={[0, 1]}
-                formatter={(v) => `${Math.round(v * 100)}%`}
-                current={telemetryDs}
-                reference={referenceDs}
-                onHover={setHoverDistance}
-                onZoomChange={setZoomRange}
-                zoomRange={zoomRange}
-                sectorMarkers={sectorMarkers}
-              />
-              <ChannelChart
-                title="BRAKE"
-                subtitle="%"
-                channelKey="br"
-                color="#ff2d2d"
-                yDomain={[0, 1]}
-                formatter={(v) => `${Math.round(v * 100)}%`}
-                current={telemetryDs}
-                reference={referenceDs}
-                onHover={setHoverDistance}
-                onZoomChange={setZoomRange}
-                zoomRange={zoomRange}
-                sectorMarkers={sectorMarkers}
-              />
-              <ChannelChart
-                title="STEERING"
-                subtitle="%"
-                channelKey="st"
-                color="#5ac8ff"
-                yDomain={[-1, 1]}
-                formatter={(v) => `${Math.round(v * 100)}%`}
-                current={telemetryDs}
-                reference={referenceDs}
-                onHover={setHoverDistance}
-                onZoomChange={setZoomRange}
-                zoomRange={zoomRange}
-                sectorMarkers={sectorMarkers}
-              />
-              <ChannelChart
-                title="VELOCIDADE"
-                subtitle="KM/H"
-                channelKey="v"
-                color="#c77dff"
-                yDomain={["auto", "auto"]}
-                formatter={(v) => `${Math.round(v)}`}
-                current={telemetryDs}
-                reference={referenceDs}
-                onHover={setHoverDistance}
-                onZoomChange={setZoomRange}
-                zoomRange={zoomRange}
-                sectorMarkers={sectorMarkers}
-                height={170}
-              />
-              <ChannelChart
-                title="MARCHA"
-                channelKey="g"
-                color="#ffd60a"
-                yDomain={[-1, 8]}
-                formatter={(v) =>
-                  v == null
-                    ? "—"
-                    : v <= -1
-                      ? "R"
-                      : v === 0
-                        ? "N"
-                        : String(Math.round(v))
-                }
-                current={telemetryDs}
-                reference={referenceDs}
-                onHover={setHoverDistance}
-                onZoomChange={setZoomRange}
-                zoomRange={zoomRange}
-                sectorMarkers={sectorMarkers}
-                stepped
-              />
-            </div>
-            <div className="lg:sticky lg:top-4 self-start">
+        </div>
+      )}
+
+      {loadingTelem ? (
+        emptyBox("CARREGANDO TELEMETRIA...")
+      ) : telemetry ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 320px",
+            gap: "var(--gap)",
+            padding: "0 var(--pad) var(--pad)",
+          }}
+        >
+          {/* Charts column */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--gap)",
+              minWidth: 0,
+            }}
+          >
+            {referenceDs && !loadingRef && (
+              <>
+                <DeltaChart
+                  current={telemetryDs}
+                  reference={referenceDs}
+                  onHover={setHoverDistance}
+                  onZoomChange={setZoomRange}
+                  zoomRange={zoomRange}
+                  sectorMarkers={sectorMarkers}
+                />
+                <SpeedDeltaChart
+                  current={telemetryDs}
+                  reference={referenceDs}
+                  onHover={setHoverDistance}
+                  onZoomChange={setZoomRange}
+                  zoomRange={zoomRange}
+                  sectorMarkers={sectorMarkers}
+                />
+              </>
+            )}
+            <ChannelChart
+              title="THROTTLE"
+              subtitle="%"
+              channelKey="th"
+              color="var(--throttle)"
+              yDomain={[0, 1]}
+              formatter={(v) => `${Math.round(v * 100)}%`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+            />
+            <ChannelChart
+              title="BRAKE"
+              subtitle="%"
+              channelKey="br"
+              color="var(--brake)"
+              yDomain={[0, 1]}
+              formatter={(v) => `${Math.round(v * 100)}%`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+            />
+            <ChannelChart
+              title="STEERING"
+              subtitle="%"
+              channelKey="st"
+              color="var(--steer)"
+              yDomain={[-1, 1]}
+              formatter={(v) => `${Math.round(v * 100)}%`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+            />
+            <ChannelChart
+              title="VELOCIDADE"
+              subtitle="KM/H"
+              channelKey="v"
+              color="var(--speed)"
+              yDomain={["auto", "auto"]}
+              formatter={(v) => `${Math.round(v)}`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+              height={170}
+            />
+            <ChannelChart
+              title="MARCHA"
+              channelKey="g"
+              color="var(--gear)"
+              yDomain={[-1, 8]}
+              formatter={(v) =>
+                v == null
+                  ? "—"
+                  : v <= -1
+                  ? "R"
+                  : v === 0
+                  ? "N"
+                  : String(Math.round(v))
+              }
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+              stepped
+            />
+          </div>
+
+          {/* Sidebar */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--gap)",
+              position: "sticky",
+              top: 0,
+              alignSelf: "flex-start",
+              height: "fit-content",
+            }}
+          >
+            <SidePanel title="Traçado" right="DRAG = ZOOM">
               <TrackMap
                 telemetry={telemetry}
                 reference={referenceTelemetry}
@@ -481,14 +707,176 @@ export default function Telemetria() {
                 zoomRange={zoomRange}
                 sectorMarkers={sectorMarkers}
               />
-            </div>
+            </SidePanel>
+
+            {selectedLap && (
+              <SidePanel
+                title={`Volta · ${selectedLap.lapNumber}`}
+                right={selectedLap.isValid ? "VÁLIDA" : "INVÁLIDA"}
+              >
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 600,
+                    color: selectedLap.isValid
+                      ? "var(--speed)"
+                      : "var(--crit)",
+                    letterSpacing: "-0.01em",
+                    lineHeight: 1,
+                    marginBottom: 12,
+                  }}
+                >
+                  {fmtLapTime(selectedLap.lapTime)}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    ["S1", selectedLap.sector1],
+                    ["S2", selectedLap.sector2],
+                    ["S3", selectedLap.sector3],
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 9,
+                          color: "var(--tx-3)",
+                          letterSpacing: "0.18em",
+                        }}
+                      >
+                        {k}
+                      </div>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 13,
+                          color: "var(--tx-0)",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {fmtSector(v)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {referenceLap && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 12,
+                      borderTop: "1px solid var(--bd-0)",
+                    }}
+                  >
+                    <div
+                      className="mono"
+                      style={{
+                        fontSize: 9,
+                        letterSpacing: "0.18em",
+                        color: "var(--tx-3)",
+                        textTransform: "uppercase",
+                        marginBottom: 6,
+                      }}
+                    >
+                      vs Volta {referenceLap.lapNumber}
+                    </div>
+                    <div
+                      className="mono"
+                      style={{
+                        fontSize: 20,
+                        fontWeight: 600,
+                        color:
+                          selectedLap.lapTime < referenceLap.lapTime
+                            ? "var(--ok)"
+                            : "var(--crit)",
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      {selectedLap.lapTime < referenceLap.lapTime ? "" : "+"}
+                      {(selectedLap.lapTime - referenceLap.lapTime).toFixed(3)}s
+                    </div>
+                  </div>
+                )}
+              </SidePanel>
+            )}
+
+            {channelStats && (
+              <SidePanel title="Métricas">
+                <div
+                  className="mono"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  {[
+                    [
+                      "% PÉ FUNDO",
+                      `${(channelStats.fullThrottlePct * 100).toFixed(1)}%`,
+                      "var(--throttle)",
+                    ],
+                    [
+                      "% NA FREADA",
+                      `${(channelStats.brakingPct * 100).toFixed(1)}%`,
+                      "var(--brake)",
+                    ],
+                    [
+                      "VEL. MÉDIA",
+                      `${Math.round(channelStats.vAvg)} km/h`,
+                      "var(--tx-1)",
+                    ],
+                    [
+                      "VEL. MAX",
+                      `${Math.round(channelStats.vMax)} km/h`,
+                      "var(--speed)",
+                    ],
+                    [
+                      "VEL. MIN",
+                      channelStats.vMin > 0
+                        ? `${Math.round(channelStats.vMin)} km/h`
+                        : "—",
+                      "var(--tx-2)",
+                    ],
+                    [
+                      "RPM MAX",
+                      Math.round(channelStats.rpmMax).toLocaleString("pt-BR"),
+                      "var(--rpm)",
+                    ],
+                  ].map(([k, v, c]) => (
+                    <div
+                      key={k}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 11,
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "var(--tx-3)",
+                          letterSpacing: "0.14em",
+                        }}
+                      >
+                        {k}
+                      </span>
+                      <span style={{ color: c, fontWeight: 500 }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </SidePanel>
+            )}
           </div>
-        ) : (
-          <div className="border hairline p-8 text-center text-muted mono text-xs tracking-widest">
-            SELECIONE UMA VOLTA
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        emptyBox("SELECIONE UMA VOLTA")
+      )}
 
       <ImportLapModal
         open={showImport}

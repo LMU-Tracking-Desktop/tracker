@@ -68,23 +68,56 @@ function DeltaChartBase({
 
   return (
     <div
-      className="border hairline flex flex-col"
-      style={{ background: "var(--surface)" }}
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
-      <div className="px-4 py-3 border-b hairline flex items-center justify-between">
-        <span className="mono text-[10px] tracking-[0.2em] text-muted">
-          DELTA vs REFERENCIA
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--bd-0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.14em",
+            color: "var(--tx-1)",
+            textTransform: "uppercase",
+            fontWeight: 600,
+          }}
+        >
+          Delta vs Referência
         </span>
-        <span className="mono text-[10px] tracking-[0.2em]">
-          <span className="text-muted">FINAL </span>
+        <span
+          className="mono"
+          style={{ fontSize: 10, letterSpacing: "0.14em" }}
+        >
+          <span
+            style={{
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+              marginRight: 6,
+            }}
+          >
+            FINAL
+          </span>
           <span
             style={{
               color:
                 finalDelta > 0
-                  ? "var(--accent)"
+                  ? "var(--crit)"
                   : finalDelta < 0
-                    ? "var(--green)"
-                    : "var(--muted)",
+                  ? "var(--ok)"
+                  : "var(--tx-2)",
+              fontWeight: 600,
             }}
           >
             {finalDelta > 0 ? "+" : ""}
@@ -92,7 +125,7 @@ function DeltaChartBase({
           </span>
         </span>
       </div>
-      <div className="h-[220px] p-3" style={{ userSelect: "none" }}>
+      <div style={{ height: 220, padding: 12, userSelect: "none" }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={data}
@@ -104,28 +137,28 @@ function DeltaChartBase({
           >
             <defs>
               <linearGradient id="deltaPos" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.5} />
-                <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--crit)" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="var(--crit)" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="deltaNeg" x1="0" y1="1" x2="0" y2="0">
-                <stop offset="0%" stopColor="var(--green)" stopOpacity={0.5} />
-                <stop offset="100%" stopColor="var(--green)" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--ok)" stopOpacity={0.5} />
+                <stop offset="100%" stopColor="var(--ok)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" />
+            <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
             <XAxis
               dataKey="d"
               type="number"
               domain={zoomRange || ["dataMin", "dataMax"]}
-              stroke="var(--muted)"
-              tick={{ fontSize: 11 }}
+              stroke="var(--tx-3)"
+              tick={{ fontSize: 10, fontFamily: "Geist Mono", fill: "var(--tx-3)" }}
               tickLine={false}
               tickFormatter={(v) => `${Math.round(v)}m`}
               allowDataOverflow
             />
             <YAxis
-              stroke="var(--muted)"
-              tick={{ fontSize: 11 }}
+              stroke="var(--tx-3)"
+              tick={{ fontSize: 10, fontFamily: "Geist Mono", fill: "var(--tx-3)" }}
               tickLine={false}
               domain={[-absMax, absMax]}
               width={60}
@@ -142,30 +175,30 @@ function DeltaChartBase({
                 const v = entry.value;
                 const color =
                   v > 0.02
-                    ? "var(--accent)"
+                    ? "var(--crit)"
                     : v < -0.02
-                      ? "var(--green)"
-                      : "var(--muted)";
+                    ? "var(--ok)"
+                    : "var(--tx-2)";
                 const tag =
-                  v > 0.02 ? "ATRAS" : v < -0.02 ? "FRENTE" : "EMPATE";
+                  v > 0.02 ? "ATRÁS" : v < -0.02 ? "FRENTE" : "EMPATE";
                 const sign = v > 0 ? "+" : "";
                 return (
                   <div
                     style={{
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
+                      background: "var(--bg-3)",
+                      border: "1px solid var(--bd-2)",
                       padding: "8px 12px",
-                      fontFamily:
-                        'ui-monospace, "SF Mono", "Consolas", monospace',
-                      fontSize: 12,
+                      fontFamily: "Geist Mono",
+                      fontSize: 11,
                       lineHeight: 1.5,
+                      letterSpacing: "0.04em",
                     }}
                   >
                     <div
                       style={{
-                        color: "var(--muted)",
+                        color: "var(--tx-3)",
                         fontSize: 10,
-                        letterSpacing: "0.1em",
+                        letterSpacing: "0.14em",
                       }}
                     >
                       {Math.round(label)}m
@@ -178,7 +211,7 @@ function DeltaChartBase({
                 );
               }}
             />
-            <ReferenceLine y={0} stroke="var(--muted)" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--tx-3)" strokeWidth={1} />
             {drag && (
               <ReferenceArea
                 x1={drag.start}
@@ -192,28 +225,30 @@ function DeltaChartBase({
             {sectorMarkers?.s1 != null && (
               <ReferenceLine
                 x={sectorMarkers.s1}
-                stroke="#ffd60a"
+                stroke="var(--warn)"
                 strokeOpacity={0.55}
                 strokeDasharray="4 3"
                 label={{
                   value: "S1",
                   position: "insideTopLeft",
-                  fill: "#ffd60a",
-                  fontSize: 10,
+                  fill: "var(--warn)",
+                  fontSize: 9,
+                  fontFamily: "Geist Mono",
                 }}
               />
             )}
             {sectorMarkers?.s2 != null && (
               <ReferenceLine
                 x={sectorMarkers.s2}
-                stroke="#ffd60a"
+                stroke="var(--warn)"
                 strokeOpacity={0.55}
                 strokeDasharray="4 3"
                 label={{
                   value: "S2",
                   position: "insideTopLeft",
-                  fill: "#ffd60a",
-                  fontSize: 10,
+                  fill: "var(--warn)",
+                  fontSize: 9,
+                  fontFamily: "Geist Mono",
                 }}
               />
             )}
@@ -236,8 +271,8 @@ function DeltaChartBase({
             <Area
               type="monotone"
               dataKey="delta"
-              stroke="#c77dff"
-              strokeWidth={2}
+              stroke="var(--speed)"
+              strokeWidth={1.6}
               fill="none"
               isAnimationActive={false}
             />

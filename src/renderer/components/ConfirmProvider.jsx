@@ -1,11 +1,11 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import Modal from "./Modal.jsx";
 
 const ConfirmContext = createContext(null);
 
 export function useConfirm() {
   const ctx = useContext(ConfirmContext);
   if (!ctx) {
-    // Fallback caso o provider nao esteja montado (nao deveria acontecer)
     return async (opts) => window.confirm(opts?.message || "Tem certeza?");
   }
   return ctx;
@@ -33,63 +33,31 @@ export default function ConfirmProvider({ children }) {
     setState(null);
   };
 
-  // Fecha com ESC cancela, Enter confirma
-  const handleKey = (e) => {
-    if (e.key === "Escape") close(false);
-    else if (e.key === "Enter") close(true);
-  };
+  useEffect(() => {
+    if (!state) return;
+    const onKey = (e) => {
+      if (e.key === "Enter") close(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   const variantColor =
-    state?.variant === "danger" ? "var(--accent)" : "var(--green)";
+    state?.variant === "danger" ? "var(--crit)" : "var(--ok)";
 
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {state && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0, 0, 0, 0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-          }}
-          onClick={() => close(false)}
-          onKeyDown={handleKey}
-          tabIndex={-1}
-        >
-          <div
-            className="border hairline"
-            style={{
-              background: "var(--background)",
-              width: "min(460px, 92vw)",
-              display: "flex",
-              flexDirection: "column",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-3 border-b hairline flex items-center justify-between">
-              <span
-                className="mono text-[11px] tracking-[0.2em]"
-                style={{ color: variantColor }}
-              >
-                {state.title.toUpperCase()}
-              </span>
-            </div>
-            <div className="p-5 space-y-3">
-              <div className="text-sm leading-relaxed">{state.message}</div>
-              {state.detail && (
-                <div
-                  className="mono text-[11px] tracking-wider"
-                  style={{ color: "var(--muted)" }}
-                >
-                  {state.detail}
-                </div>
-              )}
-            </div>
-            <div className="px-5 py-3 border-t hairline flex items-center justify-end gap-2">
+      <Modal
+        open={!!state}
+        onClose={() => close(false)}
+        title={state?.title || ""}
+        width={460}
+        zIndex={100}
+        footer={
+          state && (
+            <>
               <button
                 type="button"
                 className="btn"
@@ -99,20 +67,62 @@ export default function ConfirmProvider({ children }) {
               </button>
               <button
                 type="button"
-                className="btn"
+                className="mono"
                 onClick={() => close(true)}
                 autoFocus
                 style={{
-                  color: variantColor,
+                  padding: "6px 14px",
+                  fontSize: 11,
+                  letterSpacing: "0.14em",
+                  background: variantColor,
+                  color: state.variant === "danger" ? "#fff" : "var(--accent-ink)",
+                  border: "1px solid",
                   borderColor: variantColor,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textTransform: "uppercase",
                 }}
               >
                 {state.confirmLabel.toUpperCase()}
               </button>
+            </>
+          )
+        }
+      >
+        {state && (
+          <div
+            style={{
+              padding: "var(--pad)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.5,
+                color: "var(--tx-0)",
+              }}
+            >
+              {state.message}
             </div>
+            {state.detail && (
+              <div
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.06em",
+                  color: "var(--tx-2)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {state.detail}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </ConfirmContext.Provider>
   );
 }

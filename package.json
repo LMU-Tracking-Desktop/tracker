@@ -1,7 +1,7 @@
 {
   "name": "lmu-desktop",
   "productName": "lmu-desktop",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Le Mans Ultimate lap telemetry desktop app",
   "main": ".vite/build/main.js",
   "private": true,
@@ -29,6 +29,7 @@
     "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.2",
     "electron-squirrel-startup": "^1.0.1",
+    "geist": "^1.7.0",
     "koffi": "^2.16.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

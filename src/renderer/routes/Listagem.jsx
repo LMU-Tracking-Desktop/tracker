@@ -5,13 +5,14 @@ import CarCell from "../components/CarCell.jsx";
 import TypeBadge from "../components/TypeBadge.jsx";
 import DeleteButton from "../components/DeleteButton.jsx";
 import CopyLapButton from "../components/CopyLapButton.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import { Field } from "../components/Field.jsx";
 import {
   formatLapTime,
   formatSector,
   formatDateTime,
 } from "../lib/format.js";
 
-const DIVIDER = { borderLeft: "1px solid var(--border)" };
 const PAGE_SIZE = 50;
 
 function SortHeader({ field, label, align = "left", current, dir, onSort }) {
@@ -21,14 +22,13 @@ function SortHeader({ field, label, align = "left", current, dir, onSort }) {
     <button
       type="button"
       onClick={() => onSort(field, nextDir)}
-      className="text-inherit"
       style={{
         textAlign: align,
         width: "100%",
         background: "transparent",
         border: 0,
         cursor: "pointer",
-        color: active ? "var(--foreground)" : "inherit",
+        color: active ? "var(--tx-0)" : "inherit",
         font: "inherit",
         padding: 0,
         letterSpacing: "inherit",
@@ -38,6 +38,54 @@ function SortHeader({ field, label, align = "left", current, dir, onSort }) {
       {label}
       {active ? (dir === "asc" ? " ↑" : " ↓") : ""}
     </button>
+  );
+}
+
+function Pagination({ page, total, pageSize, onChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 14px",
+        borderBottom: "1px solid var(--bd-0)",
+        background: "var(--bg-1)",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: "var(--tx-2)",
+        }}
+      >
+        {total} {total === 1 ? "VOLTA" : "VOLTAS"} · PÁGINA {page} /{" "}
+        {totalPages}
+      </span>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          type="button"
+          className="btn"
+          disabled={page <= 1}
+          onClick={() => onChange(Math.max(1, page - 1))}
+          style={{ opacity: page <= 1 ? 0.4 : 1 }}
+        >
+          ← ANTERIOR
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={page >= totalPages}
+          onClick={() => onChange(Math.min(totalPages, page + 1))}
+          style={{ opacity: page >= totalPages ? 0.4 : 1 }}
+        >
+          PRÓXIMA →
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -105,7 +153,6 @@ export default function Listagem() {
     };
   }, [trackId, type, carClass, car, day, sort, dir, page]);
 
-  // Reset page ao mudar filtros
   useEffect(() => {
     setPage(1);
   }, [trackId, type, carClass, car, day]);
@@ -114,8 +161,6 @@ export default function Listagem() {
     () => new Map(cars.map((c) => [c.name, c.imageUrl])),
     [cars]
   );
-
-  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
 
   const handleSort = (field, d) => {
     setSort(field);
@@ -134,109 +179,153 @@ export default function Listagem() {
   };
 
   return (
-    <div className="p-8">
-      <div className="max-w-[1400px] mx-auto space-y-8">
-        <div>
-          <div className="mb-6">
-            <span className="chip">LISTAGEM</span>
-          </div>
-          <h1 className="text-3xl font-semibold">Voltas</h1>
-        </div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[{ label: "LISTAGEM" }, { label: "VOLTAS" }]}
+        actions={
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+            }}
+          >
+            {data.total} TOTAL
+          </span>
+        }
+      />
 
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:items-end">
-          <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
-          <label className="block">
-            <span className="label">Classe</span>
-            <select
-              className="select"
-              value={carClass}
-              onChange={(e) => setCarClass(e.target.value)}
-            >
-              <option value="">todas as classes</option>
-              {filterOpts.classes.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="label">Carro</span>
-            <select
-              className="select"
-              value={car}
-              onChange={(e) => setCar(e.target.value)}
-            >
-              <option value="">todos os carros</option>
-              {filterOpts.cars.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="label">Tipo</span>
-            <select
-              className="select"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
-              <option value="">todos os tipos</option>
-              {filterOpts.types.map((t) => (
-                <option key={t} value={t}>
-                  {t.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="label">Dia</span>
-            <input
-              type="date"
-              className="input"
-              value={day}
-              onChange={(e) => setDay(e.target.value)}
-            />
-          </label>
-        </section>
+      {/* Filters */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gap: "var(--gap)",
+          padding: "var(--pad)",
+        }}
+      >
+        <TrackSelect
+          tracks={tracks}
+          value={trackId}
+          onChange={setTrackId}
+          includeAll
+        />
+        <Field label="Classe">
+          <select
+            className="select"
+            value={carClass}
+            onChange={(e) => setCarClass(e.target.value)}
+          >
+            <option value="">todas as classes</option>
+            {filterOpts.classes.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Carro">
+          <select
+            className="select"
+            value={car}
+            onChange={(e) => setCar(e.target.value)}
+          >
+            <option value="">todos os carros</option>
+            {filterOpts.cars.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Tipo">
+          <select
+            className="select"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            <option value="">todos os tipos</option>
+            {filterOpts.types.map((t) => (
+              <option key={t} value={t}>
+                {t.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Dia">
+          <input
+            type="date"
+            className="input"
+            value={day}
+            onChange={(e) => setDay(e.target.value)}
+          />
+        </Field>
+      </div>
 
+      {/* Table / states */}
+      <div style={{ padding: "0 var(--pad) var(--pad)" }}>
         {loading && data.laps.length === 0 ? (
-          <section className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-            CARREGANDO...
-          </section>
+          <div
+            style={{
+              border: "1px solid var(--bd-0)",
+              background: "var(--bg-1)",
+              padding: "48px var(--pad)",
+              textAlign: "center",
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                color: "var(--tx-3)",
+              }}
+            >
+              CARREGANDO...
+            </span>
+          </div>
         ) : data.laps.length === 0 ? (
-          <section className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-            NENHUMA VOLTA COM ESSES FILTROS
-          </section>
+          <div
+            style={{
+              border: "1px solid var(--bd-0)",
+              background: "var(--bg-1)",
+              padding: "48px var(--pad)",
+              textAlign: "center",
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                color: "var(--tx-3)",
+              }}
+            >
+              NENHUMA VOLTA COM ESSES FILTROS
+            </span>
+          </div>
         ) : (
-          <section className="border hairline">
-            <div className="px-4 py-3 border-b hairline flex items-center justify-between">
-              <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                {data.total} VOLTAS · PAGINA {page} / {totalPages}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  style={{ opacity: page <= 1 ? 0.4 : 1 }}
-                >
-                  ← ANTERIOR
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  style={{ opacity: page >= totalPages ? 0.4 : 1 }}
-                >
-                  PROXIMA →
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
+          <div
+            style={{
+              border: "1px solid var(--bd-0)",
+              background: "var(--bg-1)",
+            }}
+          >
+            <Pagination
+              page={page}
+              total={data.total}
+              pageSize={PAGE_SIZE}
+              onChange={setPage}
+            />
+            <div style={{ overflowX: "auto" }}>
               <table className="laps">
                 <thead>
                   <tr>
@@ -250,11 +339,11 @@ export default function Listagem() {
                         onSort={handleSort}
                       />
                     </th>
-                    <th style={DIVIDER}>Pista</th>
+                    <th>Pista</th>
                     <th>Carro</th>
                     <th>Classe</th>
                     <th>Tipo</th>
-                    <th className="num" style={DIVIDER}>
+                    <th className="num">
                       <SortHeader
                         field="lapNumber"
                         label="Volta#"
@@ -304,7 +393,7 @@ export default function Listagem() {
                         onSort={handleSort}
                       />
                     </th>
-                    <th className="num" style={DIVIDER}>
+                    <th className="num">
                       <SortHeader
                         field="tyreWearAvg"
                         label="Pneu"
@@ -320,11 +409,11 @@ export default function Listagem() {
                 </thead>
                 <tbody>
                   {data.laps.map((lap, i) => {
-                    const cls = !lap.isValid ? "invalid invalid-clean" : "";
+                    const cls = !lap.isValid ? "invalid" : "";
                     const dash = (content) => (lap.isValid ? content : "—");
                     return (
                       <tr key={lap.id} className={cls}>
-                        <td className="num text-muted">
+                        <td className="num" style={{ color: "var(--tx-3)" }}>
                           <span className="inline-flex items-center gap-1.5">
                             <span>{(page - 1) * PAGE_SIZE + i + 1}</span>
                             {lap.hasTouch && (
@@ -337,16 +426,18 @@ export default function Listagem() {
                             )}
                           </span>
                         </td>
-                        <td className="text-muted whitespace-nowrap">
+                        <td className="whitespace-nowrap">
                           <Link
                             to={`/sessoes/${lap.sessionId}`}
-                            className="text-muted hover:text-foreground"
-                            style={{ textDecoration: "none" }}
+                            style={{
+                              color: "var(--tx-1)",
+                              textDecoration: "none",
+                            }}
                           >
                             {formatDateTime(lap.createdAt)}
                           </Link>
                         </td>
-                        <td style={DIVIDER} className="whitespace-nowrap">
+                        <td className="whitespace-nowrap">
                           {lap.session.track.name}
                         </td>
                         <td>
@@ -355,11 +446,13 @@ export default function Listagem() {
                             imageUrl={carImages.get(lap.session.car) ?? null}
                           />
                         </td>
-                        <td className="text-muted">{lap.session.carClass}</td>
+                        <td style={{ color: "var(--tx-2)" }}>
+                          {lap.session.carClass}
+                        </td>
                         <td>
                           <TypeBadge type={lap.session.type} />
                         </td>
-                        <td className="num text-muted" style={DIVIDER}>
+                        <td className="num" style={{ color: "var(--tx-2)" }}>
                           {lap.lapNumber}
                         </td>
                         <td className="num">
@@ -374,7 +467,7 @@ export default function Listagem() {
                         <td className="num">
                           {dash(formatLapTime(lap.lapTime))}
                         </td>
-                        <td className="num" style={DIVIDER}>
+                        <td className="num" style={{ color: "var(--tx-2)" }}>
                           {lap.tyreWearAvg != null
                             ? (lap.tyreWearAvg * 100).toFixed(1) + "%"
                             : "--"}
@@ -395,7 +488,7 @@ export default function Listagem() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </div>
         )}
       </div>
     </div>

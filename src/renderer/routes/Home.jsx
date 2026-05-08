@@ -1,40 +1,121 @@
 import { useEffect, useMemo, useState } from "react";
-import TrackSelect from "../components/TrackSelect.jsx";
 import LapsTable from "../components/LapsTable.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import TrackSelect from "../components/TrackSelect.jsx";
 import { formatLapTime } from "../lib/format.js";
+import { useLmuStatus } from "../lib/useLmuStatus.js";
 
-function StatCard({ label, value, sub }) {
+function LiveStatus() {
+  const connected = useLmuStatus();
+  if (connected) {
+    return (
+      <span
+        className="chip"
+        style={{
+          color: "var(--ok)",
+          borderColor: "rgba(74, 222, 128, 0.4)",
+        }}
+      >
+        <span className="live-dot" /> AO VIVO
+      </span>
+    );
+  }
   return (
-    <div className="border hairline bg-surface p-5">
-      <div className="mono text-[10px] tracking-[0.14em] uppercase text-muted mb-3">
+    <span
+      className="chip"
+      style={{
+        color: "var(--tx-3)",
+        borderColor: "var(--bd-1)",
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: "var(--tx-3)",
+          display: "inline-block",
+        }}
+      />{" "}
+      OFFLINE
+    </span>
+  );
+}
+
+function StatCard({ label, value, hint, accent, crit }) {
+  const valueColor = accent
+    ? "var(--accent)"
+    : crit
+    ? "var(--crit)"
+    : "var(--tx-0)";
+  return (
+    <div
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        padding: "var(--pad)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        minHeight: 92,
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+          textTransform: "uppercase",
+        }}
+      >
         {label}
-      </div>
-      <div className="text-4xl font-semibold tabular-nums">{value}</div>
-      {sub && (
-        <div className="mono text-[10px] tracking-[0.14em] uppercase text-muted mt-2">
-          {sub}
-        </div>
+      </span>
+      <span
+        className="mono"
+        style={{
+          fontSize: 26,
+          fontWeight: 600,
+          color: valueColor,
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </span>
+      {hint && (
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-2)",
+            textTransform: "uppercase",
+          }}
+        >
+          {hint}
+        </span>
       )}
     </div>
   );
 }
 
-function StatCell({ label, value, accent }) {
+function ClassPill({ cls }) {
+  if (!cls) return null;
   return (
-    <div
-      className="p-5 border-b border-r hairline last:border-b-0 flex flex-col gap-2"
-      style={{ background: "var(--surface)" }}
+    <span
+      className="mono"
+      style={{
+        padding: "3px 8px",
+        fontSize: 9,
+        letterSpacing: "0.16em",
+        border: "1px solid var(--bd-1)",
+        color: "var(--tx-1)",
+        textTransform: "uppercase",
+      }}
     >
-      <span className="mono text-[10px] tracking-[0.18em] text-muted">
-        {label}
-      </span>
-      <span
-        className="mono text-2xl md:text-3xl font-semibold tabular-nums"
-        style={{ color: accent ? "var(--accent)" : "var(--foreground)" }}
-      >
-        {value}
-      </span>
-    </div>
+      {cls}
+    </span>
   );
 }
 
@@ -46,7 +127,6 @@ export default function Home() {
   const [data, setData] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
 
-  // Carga inicial: tracks, cars, stats7d, ultima pista
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -67,7 +147,6 @@ export default function Home() {
     };
   }, []);
 
-  // Refresh dos dados quando troca de pista ou com polling
   useEffect(() => {
     if (!trackId) {
       setData(null);
@@ -91,7 +170,6 @@ export default function Home() {
     };
   }, [trackId]);
 
-  // Refresh dos stats de 7 dias a cada 30s
   useEffect(() => {
     const id = setInterval(async () => {
       const s = await window.api?.getStats7d?.();
@@ -109,124 +187,356 @@ export default function Home() {
   const fmtPos = (v) => (v == null ? "—" : `P${String(v).padStart(2, "0")}`);
 
   return (
-    <div className="p-8">
-      <div className="max-w-[1400px] mx-auto space-y-8">
-        {/* Header */}
-        <div>
-          <div className="mb-6 flex items-center gap-3">
-            <span className="chip">HOME</span>
-            <span className="mono text-[10px] tracking-[0.14em] uppercase text-muted">
-              ultimos 7 dias
-            </span>
-          </div>
-          <h1 className="text-3xl font-semibold mb-1">Le Mans Ultimate</h1>
-          <p className="mono text-[12px] text-muted tracking-wider">
-            Lap telemetry // desktop edition
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[{ label: "HOME" }, { label: "LE MANS ULTIMATE" }]}
+        actions={<LiveStatus />}
+      />
+
+      {/* 7-day stats */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: "var(--gap)",
+          padding: "var(--pad)",
+        }}
+      >
+        <StatCard
+          label="Sessões"
+          value={fmt(stats7d?.sessions)}
+          hint="Total · 7 dias"
+        />
+        <StatCard
+          label="Voltas"
+          value={fmt(stats7d?.laps)}
+          hint="Registradas · 7 dias"
+        />
+        <StatCard
+          label="Corridas"
+          value={fmt(stats7d?.races)}
+          hint="Participações · 7 dias"
+        />
+        <StatCard
+          label="Melhor Posição"
+          value={fmtPos(stats7d?.bestPosition)}
+          hint="Em corrida · 7 dias"
+          accent={stats7d?.bestPosition != null && stats7d.bestPosition <= 3}
+        />
+      </div>
+
+      {/* Filter */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 360px) 1fr",
+          gap: "var(--gap)",
+          padding: "0 var(--pad) var(--pad)",
+          alignItems: "end",
+        }}
+      >
+        <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
+      </div>
+
+      {/* Hero + stats / empty / loading */}
+      {!trackId ? (
+        <div
+          className="stripe-bg"
+          style={{
+            margin: "0 var(--pad) var(--pad)",
+            border: "1px solid var(--bd-0)",
+            background: "var(--bg-1)",
+            padding: "48px var(--pad)",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              color: "var(--tx-3)",
+            }}
+          >
+            SELECIONE UMA PISTA
+          </span>
+          <h2
+            style={{
+              fontSize: 24,
+              fontWeight: 600,
+              letterSpacing: "-0.02em",
+              margin: 0,
+            }}
+          >
+            Pronto para rodar
+          </h2>
+          <p
+            style={{
+              color: "var(--tx-2)",
+              fontSize: 13,
+              maxWidth: 420,
+              margin: "0 auto",
+              lineHeight: 1.5,
+            }}
+          >
+            {tracks.length > 0
+              ? "Escolhe uma pista acima para ver as voltas."
+              : "Ainda não há pistas. Elas são criadas automaticamente quando o tracker registra uma sessão."}
           </p>
         </div>
-
-        {/* 7-day cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="sessoes" value={fmt(stats7d?.sessions)} sub="total" />
-          <StatCard label="voltas" value={fmt(stats7d?.laps)} sub="registradas" />
-          <StatCard
-            label="corridas"
-            value={fmt(stats7d?.races)}
-            sub="participacoes"
-          />
-          <StatCard
-            label="melhor posicao"
-            value={fmtPos(stats7d?.bestPosition)}
-            sub="em corrida"
-          />
+      ) : !data ? (
+        <div
+          style={{
+            margin: "0 var(--pad) var(--pad)",
+            border: "1px solid var(--bd-0)",
+            background: "var(--bg-1)",
+            padding: "48px var(--pad)",
+            textAlign: "center",
+          }}
+        >
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              color: "var(--tx-3)",
+            }}
+          >
+            {loadingData ? "CARREGANDO..." : "SEM DADOS"}
+          </span>
         </div>
-
-        {/* Filtro */}
-        <section className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 md:items-end">
-          <TrackSelect
-            tracks={tracks}
-            value={trackId}
-            onChange={setTrackId}
-          />
-          <div className="md:pb-[10px]">
-            <span className="chip">
-              <span className="live-dot" /> ao vivo
-            </span>
-          </div>
-        </section>
-
-        {/* Hero + tabelas */}
-        {!trackId ? (
-          <section className="border hairline stripe-bg p-12 text-center space-y-3">
-            <div className="mono text-xs tracking-[0.2em] text-muted">
-              SELECIONE UMA PISTA
-            </div>
-            <h2 className="text-2xl font-semibold">Pronto para rodar</h2>
-            <p className="text-sm text-muted max-w-md mx-auto">
-              {tracks.length > 0
-                ? "Escolhe uma pista acima para ver as voltas."
-                : "Ainda nao ha pistas. Elas sao criadas automaticamente quando o tracker registra uma sessao."}
-            </p>
-          </section>
-        ) : !data ? (
-          <section className="border hairline p-12 text-center">
-            <div className="mono text-xs tracking-[0.2em] text-muted">
-              {loadingData ? "CARREGANDO..." : "SEM DADOS"}
-            </div>
-          </section>
-        ) : (
-          <>
-            <section className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-0 border hairline">
+      ) : (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.6fr 1fr",
+              gap: 0,
+              padding: "0 var(--pad) var(--pad)",
+            }}
+          >
+            {/* Hero */}
+            <div
+              className="hero-mask"
+              style={{
+                position: "relative",
+                height: 280,
+                overflow: "hidden",
+                border: "1px solid var(--bd-0)",
+                borderRight: "none",
+                background: data.track.imageUrl
+                  ? `url(${data.track.imageUrl}) center/cover`
+                  : "var(--bg-1)",
+              }}
+            >
+              {!data.track.imageUrl && (
+                <div
+                  className="grid-bg"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: 0.6,
+                  }}
+                />
+              )}
               <div
-                className="relative h-[320px] overflow-hidden hero-mask"
                 style={{
-                  background: data.track.imageUrl
-                    ? `url(${data.track.imageUrl}) center/cover`
-                    : "var(--surface)",
+                  position: "relative",
+                  zIndex: 10,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  padding: "var(--pad)",
                 }}
               >
-                {!data.track.imageUrl && (
-                  <div className="absolute inset-0 grid-bg opacity-60" />
-                )}
-                <div className="relative z-10 h-full flex flex-col justify-between p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="chip accent">PISTA</div>
-                      <h2 className="text-3xl md:text-4xl font-bold leading-tight">
-                        {data.track.name}
-                      </h2>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="chip accent">PISTA</span>
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: "0.14em",
+                      color: "var(--tx-3)",
+                    }}
+                  >
+                    {data.stats.sessions}{" "}
+                    {data.stats.sessions === 1 ? "SESSÃO" : "SESSÕES"} ·{" "}
+                    {data.stats.totalLaps} VOLTAS
+                  </span>
+                </div>
+                <div>
+                  <h2
+                    style={{
+                      fontSize: 36,
+                      fontWeight: 600,
+                      letterSpacing: "-0.02em",
+                      margin: 0,
+                      lineHeight: 1.05,
+                    }}
+                  >
+                    {data.track.name}
+                  </h2>
                 </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 border-l hairline">
-                <StatCell
-                  label="MELHOR VOLTA"
-                  value={
-                    data.stats.bestLap != null
-                      ? formatLapTime(data.stats.bestLap)
-                      : "--:--.---"
-                  }
-                  accent
-                />
-                <StatCell
-                  label="VOLTAS TOTAIS"
-                  value={String(data.stats.totalLaps).padStart(3, "0")}
-                />
-                <StatCell
-                  label="SESSOES"
-                  value={String(data.stats.sessions).padStart(2, "0")}
-                />
+            {/* Stats grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: "1fr 1fr 1fr",
+                border: "1px solid var(--bd-0)",
+              }}
+            >
+              <div
+                style={{
+                  padding: "var(--pad)",
+                  borderBottom: "1px solid var(--bd-0)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  gap: 6,
+                  background: "var(--bg-1)",
+                }}
+              >
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.18em",
+                    color: "var(--tx-3)",
+                  }}
+                >
+                  MELHOR VOLTA
+                </span>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 600,
+                    color: "var(--speed)",
+                    letterSpacing: "-0.01em",
+                    lineHeight: 1,
+                  }}
+                >
+                  {data.stats.bestLap != null
+                    ? formatLapTime(data.stats.bestLap)
+                    : "—:—.—"}
+                </span>
               </div>
-            </section>
+              <div
+                style={{
+                  padding: "var(--pad)",
+                  borderBottom: "1px solid var(--bd-0)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  gap: 6,
+                  background: "var(--bg-1)",
+                }}
+              >
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.18em",
+                    color: "var(--tx-3)",
+                  }}
+                >
+                  VOLTAS TOTAIS
+                </span>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 600,
+                    color: "var(--tx-0)",
+                    letterSpacing: "-0.01em",
+                    lineHeight: 1,
+                  }}
+                >
+                  {String(data.stats.totalLaps).padStart(3, "0")}
+                </span>
+              </div>
+              <div
+                style={{
+                  padding: "var(--pad)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  gap: 6,
+                  background: "var(--bg-1)",
+                }}
+              >
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.18em",
+                    color: "var(--tx-3)",
+                  }}
+                >
+                  SESSÕES
+                </span>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 600,
+                    color: "var(--tx-0)",
+                    letterSpacing: "-0.01em",
+                    lineHeight: 1,
+                  }}
+                >
+                  {String(data.stats.sessions).padStart(2, "0")}
+                </span>
+              </div>
+            </div>
+          </div>
 
-            {data.topByClass.length === 0 ? (
-              <section className="border hairline p-8 text-center text-muted mono text-xs tracking-widest">
-                NENHUMA VOLTA VALIDA AINDA NESTA PISTA
-              </section>
-            ) : (
-              data.topByClass.map(({ carClass, laps }) => (
+          {/* Top by class */}
+          {data.topByClass.length === 0 ? (
+            <div
+              style={{
+                margin: "0 var(--pad) var(--pad)",
+                border: "1px solid var(--bd-0)",
+                background: "var(--bg-1)",
+                padding: "32px var(--pad)",
+                textAlign: "center",
+              }}
+            >
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  color: "var(--tx-3)",
+                }}
+              >
+                NENHUMA VOLTA VÁLIDA AINDA NESTA PISTA
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--gap)",
+                padding: "0 var(--pad) var(--pad)",
+              }}
+            >
+              {data.topByClass.map(({ carClass, laps }) => (
                 <LapsTable
                   key={carClass}
                   laps={laps}
@@ -234,11 +544,11 @@ export default function Home() {
                   carClass={carClass}
                   carImages={carImages}
                 />
-              ))
-            )}
-          </>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

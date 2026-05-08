@@ -1,22 +1,31 @@
 const COLORS = {
   race: {
-    color: "var(--accent)",
-    border: "var(--accent)",
-    bg: "rgba(255,45,45,0.08)",
+    color: "var(--crit)",
+    border: "var(--crit)",
+    bg: "rgba(255, 59, 59, 0.08)",
   },
   qualifying: {
-    color: "var(--yellow)",
-    border: "rgba(255,214,10,0.5)",
-    bg: "rgba(255,214,10,0.06)",
+    color: "var(--warn)",
+    border: "rgba(251, 191, 36, 0.5)",
+    bg: "rgba(251, 191, 36, 0.06)",
   },
   qualy: {
-    color: "var(--yellow)",
-    border: "rgba(255,214,10,0.5)",
-    bg: "rgba(255,214,10,0.06)",
+    color: "var(--warn)",
+    border: "rgba(251, 191, 36, 0.5)",
+    bg: "rgba(251, 191, 36, 0.06)",
   },
   practice: {
-    color: "var(--muted)",
-    border: "var(--border)",
+    color: "var(--tx-2)",
+    border: "var(--bd-1)",
+  },
+  warmup: {
+    color: "var(--steer)",
+    border: "rgba(74, 214, 255, 0.5)",
+    bg: "rgba(74, 214, 255, 0.06)",
+  },
+  testday: {
+    color: "var(--tx-2)",
+    border: "var(--bd-1)",
   },
 };
 

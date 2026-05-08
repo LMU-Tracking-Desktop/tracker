@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import PageHeader from "../components/PageHeader.jsx";
+import { Field } from "../components/Field.jsx";
+import { useLmuStatus } from "../lib/useLmuStatus.js";
 
 export default function Settings() {
   const [config, setConfig] = useState(null);
@@ -7,6 +10,8 @@ export default function Settings() {
   const [outlierPct, setOutlierPct] = useState(7);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [version, setVersion] = useState("");
+  const lmuConnected = useLmuStatus();
 
   useEffect(() => {
     (async () => {
@@ -17,6 +22,7 @@ export default function Settings() {
       setPollMs(c.poll_interval_ms ?? 250);
       setOutlierPct(c.outlier_threshold_pct ?? 7);
     })();
+    window.api?.getAppVersion?.().then((v) => setVersion(v || ""));
   }, []);
 
   const save = async () => {
@@ -45,122 +51,226 @@ export default function Settings() {
       (pollMs | 0) !== config.poll_interval_ms ||
       (outlierPct | 0) !== (config.outlier_threshold_pct ?? 7));
 
+  const sectionStyle = {
+    background: "var(--bg-1)",
+    border: "1px solid var(--bd-0)",
+  };
+  const sectionHeaderStyle = {
+    padding: "10px 14px",
+    borderBottom: "1px solid var(--bd-0)",
+  };
+  const sectionTitle = (text) => (
+    <span
+      className="mono"
+      style={{
+        fontSize: 10,
+        letterSpacing: "0.14em",
+        color: "var(--tx-1)",
+        textTransform: "uppercase",
+      }}
+    >
+      {text}
+    </span>
+  );
+
   return (
-    <div className="p-8">
-      <div className="max-w-[800px] mx-auto space-y-8">
-        <div>
-          <div className="mb-6">
-            <span className="chip">SETTINGS</span>
-          </div>
-          <h1 className="text-3xl font-semibold">Configuracoes</h1>
-        </div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[{ label: "SETTINGS" }, { label: "CONFIGURAÇÕES" }]}
+      />
 
-        <section className="border hairline p-6 space-y-5" style={{ background: "var(--surface)" }}>
-          <label className="block">
-            <span className="label">Username (piloto)</span>
-            <input
-              type="text"
-              className="input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Seu nome no LMU"
-            />
-            <span className="mono text-[10px] tracking-widest text-muted mt-2 block">
-              Aplicado na proxima sessao criada. Mudar nao renomeia sessoes antigas.
-            </span>
-          </label>
+      <div
+        style={{
+          padding: "var(--pad)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--gap)",
+          maxWidth: 760,
+        }}
+      >
+        {/* Profile + tracker */}
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle}>{sectionTitle("Tracker")}</div>
+          <div
+            style={{
+              padding: "var(--pad)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 18,
+            }}
+          >
+            <Field
+              label="Username (piloto)"
+              hint="Aplicado na próxima sessão criada. Mudar não renomeia sessões antigas."
+            >
+              <input
+                type="text"
+                className="input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Seu nome no LMU"
+              />
+            </Field>
 
-          <label className="block">
-            <span className="label">Poll interval (ms)</span>
-            <input
-              type="number"
-              className="input"
-              value={pollMs}
-              min={50}
-              max={5000}
-              step={50}
-              onChange={(e) => setPollMs(parseInt(e.target.value, 10) || 250)}
-            />
-            <span className="mono text-[10px] tracking-widest text-muted mt-2 block">
-              Frequencia de leitura do shared memory. Default 250ms. Menor = mais
-              precisao, mais CPU. Entre 50 e 5000.
-            </span>
-          </label>
+            <Field
+              label="Poll interval (ms)"
+              hint="Frequência de leitura do shared memory. Default 250ms. Menor = mais precisão, mais CPU. Entre 50 e 5000."
+            >
+              <input
+                type="number"
+                className="input"
+                value={pollMs}
+                min={50}
+                max={5000}
+                step={50}
+                onChange={(e) => setPollMs(parseInt(e.target.value, 10) || 250)}
+              />
+            </Field>
 
-          <label className="block">
-            <span className="label">Outlier threshold (%)</span>
-            <input
-              type="number"
-              className="input"
-              value={outlierPct}
-              min={0}
-              max={50}
-              step={1}
-              onChange={(e) =>
-                setOutlierPct(parseInt(e.target.value, 10) || 0)
-              }
-            />
-            <span className="mono text-[10px] tracking-widest text-muted mt-2 block">
-              Volta sera considerada outlier (e desconsiderada em charts/stats)
-              se for X% acima da mediana da sessao. So afeta practice/qualy —
-              em corrida todas as voltas entram. Default 7%. Use 0 pra desligar.
-            </span>
-          </label>
+            <Field
+              label="Outlier threshold (%)"
+              hint="Volta será considerada outlier (e desconsiderada em charts/stats) se for X% acima da mediana da sessão. Só afeta practice/qualy — em corrida todas as voltas entram. Default 7%. Use 0 pra desligar."
+            >
+              <input
+                type="number"
+                className="input"
+                value={outlierPct}
+                min={0}
+                max={50}
+                step={1}
+                onChange={(e) =>
+                  setOutlierPct(parseInt(e.target.value, 10) || 0)
+                }
+              />
+            </Field>
 
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="button"
-              className="btn"
-              disabled={!dirty || saving}
-              onClick={save}
+            <div
               style={{
-                opacity: !dirty || saving ? 0.5 : 1,
-                color: dirty ? "var(--accent)" : undefined,
-                borderColor: dirty ? "var(--accent)" : undefined,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                paddingTop: 6,
+                borderTop: "1px solid var(--bd-0)",
+                marginTop: 6,
               }}
             >
-              {saving ? "SALVANDO..." : "SALVAR"}
-            </button>
-            {saved && (
-              <span
-                className="mono text-[10px] tracking-[0.2em]"
-                style={{ color: "var(--green)" }}
+              <button
+                type="button"
+                className={dirty ? "btn solid" : "btn"}
+                disabled={!dirty || saving}
+                onClick={save}
+                style={{
+                  opacity: !dirty || saving ? 0.5 : 1,
+                }}
               >
-                ✓ SALVO
-              </span>
-            )}
-            {dirty && !saved && (
-              <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                alteracoes pendentes
-              </span>
-            )}
+                {saving ? "SALVANDO..." : "SALVAR"}
+              </button>
+              {saved && (
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    color: "var(--ok)",
+                  }}
+                >
+                  ✓ SALVO
+                </span>
+              )}
+              {dirty && !saved && (
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    color: "var(--warn)",
+                  }}
+                >
+                  ALTERAÇÕES PENDENTES
+                </span>
+              )}
+            </div>
           </div>
+        </div>
 
-          <div className="mono text-[10px] tracking-widest text-muted pt-3 border-t hairline">
-            config salva em <span className="text-foreground">%APPDATA%\lmu-desktop\config.json</span>
+        {/* Status / About */}
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle}>{sectionTitle("Sistema")}</div>
+          <div
+            style={{
+              padding: "var(--pad)",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "var(--gap)",
+            }}
+          >
+            <InfoRow
+              label="LMU"
+              value={lmuConnected ? "● CONECTADO" : "● OFFLINE"}
+              valueColor={lmuConnected ? "var(--ok)" : "var(--tx-3)"}
+            />
+            <InfoRow
+              label="Storage"
+              value="SQLite local"
+            />
+            <InfoRow
+              label="Conexão"
+              value="Shared memory (LMU_Data)"
+            />
+            <InfoRow label="Versão" value={`v${version || "?"}`} />
           </div>
-        </section>
-
-        <section className="border hairline p-6 space-y-3" style={{ background: "var(--surface)" }}>
-          <div className="mono text-[10px] tracking-[0.2em] text-muted">
-            SOBRE
+          <div
+            style={{
+              padding: "10px 14px",
+              borderTop: "1px solid var(--bd-0)",
+              fontSize: 10,
+              letterSpacing: "0.06em",
+              color: "var(--tx-3)",
+            }}
+            className="mono"
+          >
+            Config salva em{" "}
+            <span style={{ color: "var(--tx-1)" }}>
+              %APPDATA%\lmu-desktop\config.json
+            </span>
           </div>
-          <div className="text-sm space-y-2">
-            <div>
-              <span className="text-muted">Storage: </span>
-              <span className="mono">SQLite local</span>
-            </div>
-            <div>
-              <span className="text-muted">Conexao LMU: </span>
-              <span className="mono">Shared memory (rFactor2 plugin)</span>
-            </div>
-            <div>
-              <span className="text-muted">Versao: </span>
-              <span className="mono">0.1</span>
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value, valueColor }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span
+        className="mono"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mono"
+        style={{
+          fontSize: 12,
+          color: valueColor || "var(--tx-0)",
+          fontWeight: 500,
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }

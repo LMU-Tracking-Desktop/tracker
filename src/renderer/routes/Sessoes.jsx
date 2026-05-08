@@ -4,6 +4,8 @@ import TrackSelect from "../components/TrackSelect.jsx";
 import CarCell from "../components/CarCell.jsx";
 import TypeBadge from "../components/TypeBadge.jsx";
 import DeleteButton from "../components/DeleteButton.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import { Field } from "../components/Field.jsx";
 import { formatDateTime, formatLapTime } from "../lib/format.js";
 
 const TYPE_OPTIONS = [
@@ -16,6 +18,54 @@ const TYPE_OPTIONS = [
 ];
 
 const PAGE_SIZE = 50;
+
+function Pagination({ page, total, pageSize, onChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 14px",
+        borderBottom: "1px solid var(--bd-0)",
+        background: "var(--bg-1)",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: "var(--tx-2)",
+        }}
+      >
+        {total} {total === 1 ? "SESSÃO" : "SESSÕES"} · PÁGINA {page} /{" "}
+        {totalPages}
+      </span>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          type="button"
+          className="btn"
+          disabled={page <= 1}
+          onClick={() => onChange(Math.max(1, page - 1))}
+          style={{ opacity: page <= 1 ? 0.4 : 1 }}
+        >
+          ← ANTERIOR
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={page >= totalPages}
+          onClick={() => onChange(Math.min(totalPages, page + 1))}
+          style={{ opacity: page >= totalPages ? 0.4 : 1 }}
+        >
+          PRÓXIMA →
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Sessoes() {
   const [tracks, setTracks] = useState([]);
@@ -80,76 +130,116 @@ export default function Sessoes() {
   );
 
   return (
-    <div className="p-8">
-      <div className="max-w-[1400px] mx-auto space-y-8">
-        <div>
-          <div className="mb-6">
-            <span className="chip">SESSOES</span>
-          </div>
-          <h1 className="text-3xl font-semibold">Sessões</h1>
-        </div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "auto",
+      }}
+    >
+      <PageHeader
+        crumbs={[{ label: "SESSÕES" }]}
+        actions={
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+            }}
+          >
+            {total} TOTAL
+          </span>
+        }
+      />
 
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-end">
-          <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
-          <label className="block">
-            <span className="label">Tipo</span>
-            <select
-              className="select"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
-              {TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </section>
+      {/* Filters */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 280px)",
+          gap: "var(--gap)",
+          padding: "var(--pad)",
+        }}
+      >
+        <TrackSelect
+          tracks={tracks}
+          value={trackId}
+          onChange={setTrackId}
+          includeAll
+        />
+        <Field label="Tipo">
+          <select
+            className="select"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            {TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
 
+      {/* Table / states */}
+      <div style={{ padding: "0 var(--pad) var(--pad)" }}>
         {loading && sessions.length === 0 ? (
-          <section className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-            CARREGANDO...
-          </section>
+          <div
+            style={{
+              border: "1px solid var(--bd-0)",
+              background: "var(--bg-1)",
+              padding: "48px var(--pad)",
+              textAlign: "center",
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                color: "var(--tx-3)",
+              }}
+            >
+              CARREGANDO...
+            </span>
+          </div>
         ) : sessions.length === 0 ? (
-          <section className="border hairline p-12 text-center text-muted mono text-xs tracking-widest">
-            NENHUMA SESSAO COM ESSES FILTROS
-          </section>
+          <div
+            style={{
+              border: "1px solid var(--bd-0)",
+              background: "var(--bg-1)",
+              padding: "48px var(--pad)",
+              textAlign: "center",
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                color: "var(--tx-3)",
+              }}
+            >
+              NENHUMA SESSÃO COM ESSES FILTROS
+            </span>
+          </div>
         ) : (
-          <section className="border hairline">
-            <div className="px-4 py-3 border-b hairline flex items-center justify-between">
-              <span className="mono text-[10px] tracking-[0.2em] text-muted">
-                {total} SESSOES · PAGINA {page} /{" "}
-                {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  style={{ opacity: page <= 1 ? 0.4 : 1 }}
-                >
-                  ← ANTERIOR
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={page >= Math.ceil(total / PAGE_SIZE)}
-                  onClick={() =>
-                    setPage((p) =>
-                      Math.min(Math.ceil(total / PAGE_SIZE), p + 1)
-                    )
-                  }
-                  style={{
-                    opacity: page >= Math.ceil(total / PAGE_SIZE) ? 0.4 : 1,
-                  }}
-                >
-                  PROXIMA →
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
+          <div
+            style={{
+              border: "1px solid var(--bd-0)",
+              background: "var(--bg-1)",
+            }}
+          >
+            <Pagination
+              page={page}
+              total={total}
+              pageSize={PAGE_SIZE}
+              onChange={setPage}
+            />
+            <div style={{ overflowX: "auto" }}>
               <table className="laps">
                 <thead>
                   <tr>
@@ -170,8 +260,10 @@ export default function Sessoes() {
                       <td className="whitespace-nowrap">
                         <Link
                           to={`/sessoes/${s.id}`}
-                          className="text-muted hover:text-foreground"
-                          style={{ textDecoration: "none" }}
+                          style={{
+                            color: "var(--tx-1)",
+                            textDecoration: "none",
+                          }}
                         >
                           {formatDateTime(s.startedAt)}
                         </Link>
@@ -183,30 +275,35 @@ export default function Sessoes() {
                           imageUrl={carImages.get(s.car) ?? null}
                         />
                       </td>
-                      <td className="text-muted">{s.carClass}</td>
+                      <td style={{ color: "var(--tx-2)" }}>{s.carClass}</td>
                       <td>
                         <TypeBadge type={s.type} />
                       </td>
-                      <td className="num">{s._count?.laps ?? 0}</td>
+                      <td className="num" style={{ color: "var(--tx-1)" }}>
+                        {s._count?.laps ?? 0}
+                      </td>
                       <td
                         className="num"
                         style={{
                           color:
                             s.bestLap != null
-                              ? "var(--accent)"
-                              : "var(--muted)",
+                              ? "var(--speed)"
+                              : "var(--tx-3)",
+                          fontWeight: s.bestLap != null ? 600 : 400,
                         }}
                       >
                         {s.bestLap != null ? formatLapTime(s.bestLap) : "—"}
                       </td>
-                      <td className="num text-muted">
+                      <td className="num" style={{ color: "var(--tx-2)" }}>
                         {s.avgLap != null ? formatLapTime(s.avgLap) : "—"}
                       </td>
                       <td className="text-right">
                         <DeleteButton
-                          label="deletar sessao"
-                          confirmMessage={`Deletar sessao de ${s.track.name}`}
-                          confirmDetail={`${s._count?.laps ?? 0} voltas serao apagadas. Essa acao nao pode ser desfeita.`}
+                          label="deletar sessão"
+                          confirmMessage={`Deletar sessão de ${s.track.name}`}
+                          confirmDetail={`${
+                            s._count?.laps ?? 0
+                          } voltas serão apagadas. Essa ação não pode ser desfeita.`}
                           onConfirm={async () => {
                             const ok = await window.api.deleteSession(s.id);
                             if (ok) {
@@ -223,7 +320,7 @@ export default function Sessoes() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </div>
         )}
       </div>
     </div>

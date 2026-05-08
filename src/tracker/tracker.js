@@ -122,7 +122,15 @@ async function saveLap(prisma, sessionId, lap, log) {
 
 // ── Loop principal ──────────────────────────────────────
 
-async function runTracker({ cfg, prisma, log, shouldStop }) {
+async function runTracker({ cfg, prisma, log, shouldStop, onStatus }) {
+  const emitStatus = (connected) => {
+    try {
+      onStatus?.(connected);
+    } catch (e) {
+      log(`[STATUS ERRO] ${e.message}`);
+    }
+  };
+  emitStatus(false);
   const pollMs = cfg.poll_interval_ms || 250;
 
   log("=".repeat(50));
@@ -241,6 +249,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
         sessionId = null;
         lastLapNumber = -1;
         lastTrack = null;
+        emitStatus(false);
       }
       continue;
     }
@@ -258,6 +267,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
         `[INIT] estado inicial: mTotalLaps=${p0?.mTotalLaps ?? "?"} mLapDist=${p0?.mLapDist?.toFixed?.(1) ?? "?"}m inRealtime=${snap.scoring?.mInRealtime}`
       );
       waitingForLmu = false;
+      emitStatus(true);
     }
 
     const player = snap.player;
@@ -484,16 +494,19 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
   log("\n[FIM] Tracker encerrado.");
 }
 
-function startTracker({ cfg, prisma, log }) {
+function startTracker({ cfg, prisma, log, onStatus }) {
   let stopped = false;
   const shouldStop = () => stopped;
 
-  runTracker({ cfg, prisma, log, shouldStop }).catch((e) => {
+  runTracker({ cfg, prisma, log, shouldStop, onStatus }).catch((e) => {
     log(`[ERRO FATAL] ${e.message}`);
   });
 
   return () => {
     stopped = true;
+    try {
+      onStatus?.(false);
+    } catch {}
   };
 }
 

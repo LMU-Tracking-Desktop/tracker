@@ -1,8 +1,71 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import PageHeader from "../components/PageHeader.jsx";
 import { downsample } from "../lib/telemetry.js";
 
 const LapReplay = lazy(() => import("../components/LapReplay.jsx"));
+
+function ModeToggle({ value, onChange }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        border: "1px solid var(--bd-1)",
+      }}
+    >
+      {["2d", "3d"].map((v, i) => {
+        const active = value === v;
+        return (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onChange(v)}
+            className="mono"
+            style={{
+              padding: "6px 14px",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              background: active ? "var(--accent)" : "transparent",
+              color: active ? "var(--accent-ink)" : "var(--tx-2)",
+              border: "none",
+              borderRight: i === 0 ? "1px solid var(--bd-1)" : "none",
+              fontWeight: active ? 600 : 400,
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            {v}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function emptyBox(label) {
+  return (
+    <div
+      style={{
+        margin: "var(--pad)",
+        border: "1px solid var(--bd-0)",
+        background: "var(--bg-1)",
+        padding: "48px var(--pad)",
+        textAlign: "center",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.18em",
+          color: "var(--tx-3)",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
 
 export default function Replay() {
   const { lapId } = useParams();
@@ -17,7 +80,6 @@ export default function Replay() {
   const [reference, setReference] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Carrega telemetria da volta principal
   useEffect(() => {
     if (!lapId) return;
     let cancelled = false;
@@ -35,7 +97,6 @@ export default function Replay() {
     };
   }, [lapId]);
 
-  // Carrega referencia (se houver). Suporta "imp:<id>" pra importadas.
   useEffect(() => {
     if (!refId) {
       setReference(null);
@@ -54,7 +115,6 @@ export default function Replay() {
     };
   }, [refId]);
 
-  // Esc volta pra sessao
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") navigate(-1);
@@ -63,8 +123,6 @@ export default function Replay() {
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  // 3000 pontos = resolucao completa (raw tracker ~20Hz * 100s = 2000 amostras)
-  // Antes era 700 que dava so ~7Hz numa volta longa — interpolacao muito esparsa
   const telemetryDs = useMemo(
     () => (telemetry ? downsample(telemetry, 3000) : null),
     [telemetry]
@@ -75,70 +133,45 @@ export default function Replay() {
   );
 
   return (
-    <div className="flex flex-col" style={{ height: "100vh" }}>
-      {/* Tabs + controles de topo */}
-      <div
-        className="px-4 py-3 border-b hairline flex items-center justify-between flex-wrap gap-3"
-        style={{ background: "var(--surface)" }}
-      >
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => navigate(-1)}
-            style={{ padding: "4px 10px", fontSize: 10 }}
-          >
-            ← VOLTAR
-          </button>
-          <span className="mono text-[10px] tracking-[0.2em] text-muted">
-            REPLAY {reference ? "· COM COMPARAÇÃO" : ""}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setMode("2d")}
-            style={{
-              padding: "6px 16px",
-              color: mode === "2d" ? "var(--accent)" : "var(--muted)",
-              borderColor: mode === "2d" ? "var(--accent)" : "var(--border)",
-            }}
-          >
-            2D
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setMode("3d")}
-            style={{
-              padding: "6px 16px",
-              color: mode === "3d" ? "var(--accent)" : "var(--muted)",
-              borderColor: mode === "3d" ? "var(--accent)" : "var(--border)",
-            }}
-          >
-            3D
-          </button>
-        </div>
-      </div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        background: "var(--bg-0)",
+      }}
+    >
+      <PageHeader
+        crumbs={[
+          { label: "← VOLTAR", onClick: () => navigate(-1) },
+          { label: "REPLAY" },
+          ...(reference ? [{ label: "COM COMPARAÇÃO" }] : []),
+        ]}
+        actions={
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <span
+              className="mono"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.14em",
+                color: "var(--tx-3)",
+                textTransform: "uppercase",
+              }}
+            >
+              ESC = VOLTAR · ESPAÇO = PLAY · ← → = ±1s
+            </span>
+            <ModeToggle value={mode} onChange={setMode} />
+          </div>
+        }
+      />
 
-      <div className="flex-1" style={{ overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {loading ? (
-          <div className="p-8 text-center text-muted mono text-xs tracking-widest">
-            CARREGANDO TELEMETRIA...
-          </div>
+          emptyBox("CARREGANDO TELEMETRIA...")
         ) : !telemetryDs ? (
-          <div className="p-8 text-center text-muted mono text-xs tracking-widest">
-            VOLTA SEM TELEMETRIA
-          </div>
+          emptyBox("VOLTA SEM TELEMETRIA")
         ) : (
-          <Suspense
-            fallback={
-              <div className="p-8 text-center text-muted mono text-xs tracking-widest">
-                CARREGANDO REPLAY...
-              </div>
-            }
-          >
+          <Suspense fallback={emptyBox("CARREGANDO REPLAY...")}>
             <LapReplay
               telemetry={telemetryDs}
               reference={referenceDs}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>LMU Timing Desktop — App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-0: #050505;
+    --bg-1: #0a0a0a;
+    --bg-2: #111111;
+    --bg-3: #181818;
+    --bg-4: #222;
+    --bd-0: #1c1c1c;
+    --bd-1: #262626;
+    --bd-2: #353535;
+    --tx-0: #fafafa;
+    --tx-1: #b3b3b3;
+    --tx-2: #777777;
+    --tx-3: #4a4a4a;
+    --accent: #d6ff00;
+    --accent-ink: #0a0a0a;
+    --crit: #ff3b3b;       /* best/worst lap, brake, invalid */
+    --crit-soft: rgba(255,59,59,.12);
+    --speed: #c084fc;      /* purple for speed */
+    --throttle: #4ade80;   /* green for throttle */
+    --brake: #ff3b3b;
+    --steer: #4ad6ff;
+    --gear: #fbbf24;
+    --rpm: #fbbf24;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+
+    --sb-w: 200px;
+    --topbar-h: 48px;
+    --statusbar-h: 28px;
+    --pad: 20px;
+    --gap: 14px;
+  }
+  :root[data-density="dense"] { --pad: 14px; --gap: 10px; }
+  :root[data-density="airy"] { --pad: 28px; --gap: 18px; }
+  :root[data-sidebar="thin"] { --sb-w: 56px; }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg-0);
+    color: var(--tx-0);
+    font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden; /* app shell */
+  }
+  .mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bd-1); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--bd-2); }
+
+  button { font-family: inherit; }
+  a { color: inherit; text-decoration: none; }
+  [role="button"], button { cursor: pointer; }
+
+  /* tabular numerals everywhere by default for data UI */
+  .num, .mono { font-variant-numeric: tabular-nums; }
+
+  /* keyframes */
+  @keyframes blink {
+    0%, 60% { opacity: 1; }
+    70%, 100% { opacity: 0.25; }
+  }
+  @keyframes slideInRight {
+    from { transform: translateX(120%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes scanline {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(100%); }
+  }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="app-data.jsx"></script>
+  <script type="text/babel" src="app-charts.jsx"></script>
+  <script type="text/babel" src="app-screens.jsx"></script>
+  <script type="text/babel" src="app-screens-2.jsx"></script>
+  <script type="text/babel" src="app-shell.jsx"></script>
+</body>
+</html>

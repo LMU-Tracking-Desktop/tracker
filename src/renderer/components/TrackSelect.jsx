@@ -1,19 +1,35 @@
-export default function TrackSelect({ tracks, value, onChange }) {
+export default function TrackSelect({
+  tracks,
+  value,
+  onChange,
+  label = "Pista",
+  includeAll = false,
+}) {
   return (
-    <label className="block">
-      <span className="label">Pista *</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: "var(--tx-2)",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
       <select
         className="select"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
       >
-        <option value="">Selecione uma pista</option>
+        <option value="">{includeAll ? "todas as pistas" : "Selecione uma pista"}</option>
         {tracks.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name}
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }

@@ -73,6 +73,7 @@ let isQuitting = false;
 let stopTracker = null;
 let prisma = null;
 let lastConfig = { ...DEFAULT_CONFIG };
+let lmuConnected = false;
 
 function resolveAssetPath(relativePath) {
   const candidates = [
@@ -94,6 +95,17 @@ function pushLog(line) {
 }
 
 ipcMain.handle("tracker-log-buffer", () => [...logBuffer]);
+
+ipcMain.handle("lmu.status", () => ({ connected: lmuConnected }));
+
+function setLmuStatus(connected) {
+  if (lmuConnected === connected) return;
+  lmuConnected = connected;
+  pushLog(`[STATUS] LMU ${connected ? "conectado" : "desconectado"}`);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("lmu-status", { connected });
+  }
+}
 
 // ── Stats ───────────────────────────────────────────────
 
@@ -808,7 +820,12 @@ app.whenReady().then(() => {
   createTray();
 
   if (prisma) {
-    stopTracker = startTracker({ cfg, prisma, log: pushLog });
+    stopTracker = startTracker({
+      cfg,
+      prisma,
+      log: pushLog,
+      onStatus: setLmuStatus,
+    });
   }
 
   app.on("activate", () => {

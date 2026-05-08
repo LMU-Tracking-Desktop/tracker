@@ -12,44 +12,74 @@ import {
 } from "recharts";
 import { formatLapTime } from "../lib/format.js";
 
-const BASE = {
-  tick: {
-    fontFamily:
-      'ui-monospace, "SF Mono", "Consolas", monospace',
+const TICK = {
+  fontFamily: "Geist Mono, ui-monospace, monospace",
+  fontSize: 10,
+  fill: "var(--tx-3)",
+};
+const TOOLTIP = {
+  contentStyle: {
+    background: "var(--bg-3)",
+    border: "1px solid var(--bd-2)",
+    fontFamily: "Geist Mono, ui-monospace, monospace",
     fontSize: 11,
+    color: "var(--tx-0)",
+    letterSpacing: "0.04em",
   },
-  tooltipContent: {
-    background: "var(--surface-2)",
-    border: "1px solid var(--border)",
-    fontFamily: 'ui-monospace, "SF Mono", "Consolas", monospace',
-    fontSize: 12,
-    color: "var(--foreground)",
-  },
-  tooltipLabel: { color: "var(--muted)", letterSpacing: "0.1em" },
+  labelStyle: { color: "var(--tx-3)", letterSpacing: "0.1em" },
+  itemStyle: { color: "var(--tx-0)" },
 };
 
-function ChartWrap({ title, subtitle, children }) {
+function ChartWrap({ title, subtitle, children, height = 280 }) {
   return (
     <div
-      className="border hairline flex flex-col"
-      style={{ background: "var(--surface)" }}
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--bd-0)",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
-      <div className="px-4 py-3 border-b hairline flex items-center justify-between">
-        <span className="mono text-[10px] tracking-[0.2em] text-muted">
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--bd-0)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.14em",
+            color: "var(--tx-1)",
+            textTransform: "uppercase",
+          }}
+        >
           {title}
         </span>
         {subtitle && (
-          <span className="mono text-[10px] tracking-[0.2em] text-muted">
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+            }}
+          >
             {subtitle}
           </span>
         )}
       </div>
-      <div className="h-[280px] p-3">{children}</div>
+      <div style={{ height, padding: 12 }}>{children}</div>
     </div>
   );
 }
 
-export function LapTimeChart({ data, avg }) {
+export function LapTimeChart({ data, avg, best }) {
   const validTimes = data.map((d) => d.valid).filter((v) => v != null);
   const min = validTimes.length ? Math.min(...validTimes) : 0;
   const max = validTimes.length ? Math.max(...validTimes) : 1;
@@ -64,71 +94,79 @@ export function LapTimeChart({ data, avg }) {
   }));
 
   return (
-    <ChartWrap title="TEMPO DE VOLTA" subtitle="● AMARELO = TOQUE · ▲ = INVALIDA">
+    <ChartWrap title="Tempo de Volta" subtitle="● TOQUE  ▲ INVÁLIDA">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={markedData}
           margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
         >
-          <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" />
+          <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
           <XAxis
             dataKey="lap"
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
           />
           <YAxis
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
             tickFormatter={(v) => formatLapTime(v)}
             width={70}
             domain={[yMin, yMax]}
           />
           <Tooltip
-            contentStyle={BASE.tooltipContent}
-            labelStyle={BASE.tooltipLabel}
+            {...TOOLTIP}
             labelFormatter={(l) => `VOLTA ${l}`}
             formatter={(v, name, item) => {
               if (v == null) return null;
               if (name === "invalidMarker") {
                 const t = item?.payload?.invalid;
-                return [t && t > 0 ? formatLapTime(t) : "cortada", "invalida"];
+                return [t && t > 0 ? formatLapTime(t) : "cortada", "inválida"];
               }
               if (name === "touch") {
                 return [formatLapTime(v), "com toque"];
               }
-              return [formatLapTime(v), "valida"];
+              return [formatLapTime(v), "válida"];
             }}
           />
           {avg != null && (
             <ReferenceLine
               y={avg}
-              stroke="var(--muted)"
+              stroke="var(--tx-3)"
               strokeDasharray="4 4"
               label={{
-                value: `MEDIA ${formatLapTime(avg)}`,
-                fill: "var(--muted)",
-                fontSize: 10,
-                letterSpacing: "0.15em",
+                value: `MÉDIA ${formatLapTime(avg)}`,
+                fill: "var(--tx-3)",
+                fontSize: 9,
+                fontFamily: "Geist Mono",
+                letterSpacing: "0.14em",
                 position: "right",
               }}
+            />
+          )}
+          {best != null && (
+            <ReferenceLine
+              y={best}
+              stroke="var(--speed)"
+              strokeDasharray="2 4"
+              strokeOpacity={0.5}
             />
           )}
           <Line
             type="monotone"
             dataKey="valid"
-            stroke="var(--accent)"
-            strokeWidth={2}
-            dot={{ r: 3, fill: "var(--accent)" }}
-            activeDot={{ r: 5 }}
+            stroke="var(--crit)"
+            strokeWidth={1.4}
+            dot={{ r: 2.5, fill: "var(--crit)", strokeWidth: 0 }}
+            activeDot={{ r: 4, fill: "var(--accent)" }}
             connectNulls
             isAnimationActive={false}
             name="valid"
           />
           <Scatter
             dataKey="touch"
-            fill="#ffd60a"
+            fill="var(--warn)"
             stroke="#1a1400"
             strokeWidth={1}
             shape="circle"
@@ -136,7 +174,7 @@ export function LapTimeChart({ data, avg }) {
           />
           <Scatter
             dataKey="invalidMarker"
-            fill="#ffd60a"
+            fill="var(--warn)"
             shape="triangle"
             name="invalidMarker"
           />
@@ -150,22 +188,22 @@ export function PositionChart({ data }) {
   const points = data.filter((d) => d.position != null);
   const maxPos = Math.max(...points.map((d) => d.position ?? 0), 10);
   return (
-    <ChartWrap title="POSICAO" subtitle="1º NO TOPO">
+    <ChartWrap title="Posição" subtitle="1º NO TOPO">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={data}
           margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
         >
-          <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" />
+          <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
           <XAxis
             dataKey="lap"
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
           />
           <YAxis
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
             reversed
             domain={[1, Math.max(maxPos, 1)]}
@@ -173,18 +211,17 @@ export function PositionChart({ data }) {
             width={40}
           />
           <Tooltip
-            contentStyle={BASE.tooltipContent}
-            labelStyle={BASE.tooltipLabel}
+            {...TOOLTIP}
             labelFormatter={(l) => `VOLTA ${l}`}
-            formatter={(v) => [`P${v}`, "posicao"]}
+            formatter={(v) => [`P${v}`, "posição"]}
           />
           <Line
             type="stepAfter"
             dataKey="position"
-            stroke="var(--yellow)"
-            strokeWidth={2}
-            dot={{ r: 3, fill: "var(--yellow)" }}
-            activeDot={{ r: 5 }}
+            stroke="var(--warn)"
+            strokeWidth={1.6}
+            dot={{ r: 2.5, fill: "var(--warn)", strokeWidth: 0 }}
+            activeDot={{ r: 4 }}
             connectNulls
             isAnimationActive={false}
           />
@@ -200,37 +237,36 @@ export function TyreWearChart({ data }) {
     tyrePct: d.tyre != null ? +(d.tyre * 100).toFixed(1) : null,
   }));
   return (
-    <ChartWrap title="DESGASTE DE PNEU" subtitle="MEDIA (%)">
+    <ChartWrap title="Desgaste de Pneu" subtitle="MÉDIA (%)">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={view} margin={{ top: 8, right: 12, bottom: 4, left: 8 }}>
-          <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" />
+          <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
           <XAxis
             dataKey="lap"
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
           />
           <YAxis
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
             tickFormatter={(v) => `${v}%`}
             width={50}
             domain={[0, 100]}
           />
           <Tooltip
-            contentStyle={BASE.tooltipContent}
-            labelStyle={BASE.tooltipLabel}
+            {...TOOLTIP}
             labelFormatter={(l) => `VOLTA ${l}`}
             formatter={(v) => [`${v}%`, "desgaste"]}
           />
           <Line
             type="monotone"
             dataKey="tyrePct"
-            stroke="#5ac8ff"
-            strokeWidth={2}
-            dot={{ r: 3, fill: "#5ac8ff" }}
-            activeDot={{ r: 5 }}
+            stroke="var(--steer)"
+            strokeWidth={1.6}
+            dot={{ r: 2.5, fill: "var(--steer)", strokeWidth: 0 }}
+            activeDot={{ r: 4 }}
             connectNulls
             isAnimationActive={false}
           />
@@ -242,27 +278,26 @@ export function TyreWearChart({ data }) {
 
 export function FuelChart({ data, capacity }) {
   return (
-    <ChartWrap title="COMBUSTIVEL" subtitle={`TANQUE ${capacity.toFixed(0)}L`}>
+    <ChartWrap title="Combustível" subtitle={`TANQUE ${capacity.toFixed(0)}L`}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 8 }}>
-          <CartesianGrid stroke="var(--border)" strokeDasharray="2 4" />
+          <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
           <XAxis
             dataKey="lap"
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
           />
           <YAxis
-            stroke="var(--muted)"
-            tick={BASE.tick}
+            stroke="var(--tx-3)"
+            tick={TICK}
             tickLine={false}
             tickFormatter={(v) => `${v}L`}
             width={50}
             domain={[0, capacity]}
           />
           <Tooltip
-            contentStyle={BASE.tooltipContent}
-            labelStyle={BASE.tooltipLabel}
+            {...TOOLTIP}
             labelFormatter={(l) => `VOLTA ${l}`}
             formatter={(v, name) => [
               `${(v ?? 0).toFixed(2)}L`,
@@ -272,18 +307,18 @@ export function FuelChart({ data, capacity }) {
           <Line
             type="monotone"
             dataKey="fuelRemaining"
-            stroke="#30f58a"
-            strokeWidth={2}
-            dot={{ r: 3, fill: "#30f58a" }}
-            activeDot={{ r: 5 }}
+            stroke="var(--ok)"
+            strokeWidth={1.6}
+            dot={{ r: 2.5, fill: "var(--ok)", strokeWidth: 0 }}
+            activeDot={{ r: 4 }}
             isAnimationActive={false}
             name="fuelRemaining"
           />
           <Line
             type="monotone"
             dataKey="fuelUsed"
-            stroke="#ff8a3d"
-            strokeWidth={1.5}
+            stroke="var(--warn)"
+            strokeWidth={1.2}
             strokeDasharray="4 4"
             dot={false}
             isAnimationActive={false}
