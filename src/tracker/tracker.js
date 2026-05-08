@@ -122,7 +122,15 @@ async function saveLap(prisma, sessionId, lap, log) {
 
 // ── Loop principal ──────────────────────────────────────
 
-async function runTracker({ cfg, prisma, log, shouldStop, onStatus, onLive }) {
+async function runTracker({
+  cfg,
+  prisma,
+  log,
+  shouldStop,
+  onStatus,
+  onLive,
+  onLapSaved,
+}) {
   const emitStatus = (connected) => {
     try {
       onStatus?.(connected);
@@ -520,6 +528,13 @@ async function runTracker({ cfg, prisma, log, shouldStop, onStatus, onLive }) {
         try {
           await saveLap(prisma, sessionId, lapData, log);
           log(`    [OK] Salvo no banco`);
+          // Notifica overlay pra recarregar refLap (caso essa tenha sido a
+          // volta mais rapida que a referencia atual)
+          try {
+            onLapSaved?.();
+          } catch (e) {
+            log(`    [ERRO onLapSaved] ${e.message}`);
+          }
         } catch (e) {
           log(`    [ERRO DB] ${e.message}`);
         }
@@ -533,11 +548,19 @@ async function runTracker({ cfg, prisma, log, shouldStop, onStatus, onLive }) {
   log("\n[FIM] Tracker encerrado.");
 }
 
-function startTracker({ cfg, prisma, log, onStatus, onLive }) {
+function startTracker({ cfg, prisma, log, onStatus, onLive, onLapSaved }) {
   let stopped = false;
   const shouldStop = () => stopped;
 
-  runTracker({ cfg, prisma, log, shouldStop, onStatus, onLive }).catch((e) => {
+  runTracker({
+    cfg,
+    prisma,
+    log,
+    shouldStop,
+    onStatus,
+    onLive,
+    onLapSaved,
+  }).catch((e) => {
     log(`[ERRO FATAL] ${e.message}`);
   });
 

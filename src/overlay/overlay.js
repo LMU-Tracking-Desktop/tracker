@@ -145,91 +145,93 @@ function buildRefBuckets(samples, count) {
 async function loadRefLap(trackName, carClass) {
   if (!prisma || !trackName || !carClass) return null;
 
-  const [ownLap, importedLap] = await Promise.all([
-    prisma.lap.findFirst({
-      where: {
-        isValid: true,
-        NOT: { telemetryJson: null },
-        session: { track: { name: trackName }, carClass },
-      },
-      orderBy: { lapTime: "asc" },
-      select: {
-        lapTime: true,
-        telemetryJson: true,
-        session: { select: { user: { select: { name: true } } } },
-      },
-    }),
-    prisma.importedLap.findFirst({
-      where: {
-        isValid: true,
-        NOT: { telemetryJson: null },
-        trackName,
-        carClass,
-      },
-      orderBy: { lapTime: "asc" },
-      select: { lapTime: true, telemetryJson: true, ownerName: true },
-    }),
-  ]);
+  // So voltas proprias (mesma pista + classe). Ignora importedLap — comparar
+  // com volta de outra pessoa nao e o que o usuario quer no overlay live.
+  const ownLap = await prisma.lap.findFirst({
+    where: {
+      isValid: true,
+      NOT: { telemetryJson: null },
+      session: { track: { name: trackName }, carClass },
+    },
+    orderBy: { lapTime: "asc" },
+    select: {
+      lapTime: true,
+      telemetryJson: true,
+      session: { select: { user: { select: { name: true } } } },
+    },
+  });
 
-  let pick = null;
-  if (ownLap && (!importedLap || ownLap.lapTime <= importedLap.lapTime)) {
-    pick = {
-      lapTime: ownLap.lapTime,
-      json: ownLap.telemetryJson,
-      source: "self",
-      owner: ownLap.session?.user?.name || "voce",
-    };
-  } else if (importedLap) {
-    pick = {
-      lapTime: importedLap.lapTime,
-      json: importedLap.telemetryJson,
-      source: "imported",
-      owner: importedLap.ownerName,
-    };
-  }
-  if (!pick) return null;
+  if (!ownLap) return null;
   let samples;
   try {
-    samples = JSON.parse(pick.json);
+    samples = JSON.parse(ownLap.telemetryJson);
   } catch {
     return null;
   }
   if (!Array.isArray(samples) || samples.length < 5) return null;
   samples.sort((a, b) => a.d - b.d);
-  return { samples, lapTime: pick.lapTime, source: pick.source, owner: pick.owner };
+  return {
+    samples,
+    lapTime: ownLap.lapTime,
+    source: "self",
+    owner: ownLap.session?.user?.name || "voce",
+  };
 }
 
 async function refreshRefIfNeeded(track, carClass) {
   if (!track || !carClass) return;
   if (track === state.refTrack && carClass === state.refCarClass && state.refLap)
     return;
-  if (state.loadingRef) return;
-  state.loadingRef = true;
   state.refTrack = track;
   state.refCarClass = carClass;
-  pushLog(`[OVERLAY] carregando refLap (${track} | ${carClass})...`);
+  await reloadRef("track/class change");
+}
+
+// Re-query no banco e troca refLap se achar mais rapida. Chamado quando muda
+// pista/classe E tambem apos cada volta salva (pra atualizar live quando o
+// usuario faz uma volta melhor que a referencia atual).
+async function reloadRef(reason) {
+  if (state.loadingRef) return;
+  if (!state.refTrack || !state.refCarClass) return;
+  state.loadingRef = true;
+  const requestedTrack = state.refTrack;
+  const requestedClass = state.refCarClass;
+  pushLog(
+    `[OVERLAY] carregando refLap (${requestedTrack} | ${requestedClass})... [${reason}]`
+  );
   try {
-    const ref = await loadRefLap(track, carClass);
-    if (track !== state.refTrack || carClass !== state.refCarClass) {
-      state.loadingRef = false;
+    const ref = await loadRefLap(requestedTrack, requestedClass);
+    // Sessao mudou enquanto o query rodava — descarta resultado
+    if (
+      requestedTrack !== state.refTrack ||
+      requestedClass !== state.refCarClass
+    ) {
       return;
     }
-    state.refLap = ref;
-    state.refBuckets = ref ? buildRefBuckets(ref.samples, BUCKETS) : null;
-    if (ref) {
-      const m = Math.floor(ref.lapTime / 60);
-      const s = (ref.lapTime % 60).toFixed(3).padStart(6, "0");
-      pushLog(
-        `[OVERLAY] refLap ${ref.source} (${ref.owner}) ${m}:${s}, ${ref.samples.length} samples`
-      );
-      // Manda pro renderer pra widget de trailing usar como overlay
-      sendRefSamples();
+    const prevTime = state.refLap?.lapTime ?? Infinity;
+    const newTime = ref?.lapTime ?? Infinity;
+    // So substitui se a nova e mais rapida (ou se nao tinha referencia antes)
+    if (!state.refLap || newTime < prevTime) {
+      state.refLap = ref;
+      state.refBuckets = ref ? buildRefBuckets(ref.samples, BUCKETS) : null;
+      if (ref) {
+        const m = Math.floor(ref.lapTime / 60);
+        const s = (ref.lapTime % 60).toFixed(3).padStart(6, "0");
+        pushLog(
+          `[OVERLAY] refLap atualizada: ${m}:${s}, ${ref.samples.length} samples`
+        );
+        sendRefSamples();
+      } else {
+        pushLog(`[OVERLAY] sem refLap`);
+        sendRefSamples();
+      }
     } else {
-      pushLog(`[OVERLAY] sem refLap pra ${track} | ${carClass}`);
-      sendRefSamples();
+      pushLog(
+        `[OVERLAY] refLap mantida (atual ${prevTime.toFixed(3)}s <= candidata ${newTime.toFixed(3)}s)`
+      );
     }
   } catch (e) {
-    pushLog(`[OVERLAY ERRO] loadRefLap: ${e.message}`);
+    pushLog(`[OVERLAY ERRO] reloadRef: ${e.message}`);
   } finally {
     state.loadingRef = false;
   }
@@ -492,4 +494,11 @@ function shutdown() {
   overlayWindow = null;
 }
 
-module.exports = { init, onLive, shutdown, WIDGET_IDS };
+// Chamado pelo tracker apos saveLap. Re-query no banco — se a volta recem
+// salva for mais rapida que a referencia atual, atualiza ao vivo.
+function onLapSaved() {
+  // Pequeno delay pra dar tempo do prisma efetivar o write
+  setTimeout(() => reloadRef("lap saved"), 200);
+}
+
+module.exports = { init, onLive, onLapSaved, shutdown, WIDGET_IDS };

@@ -851,6 +851,7 @@ app.whenReady().then(() => {
       log: pushLog,
       onStatus: setLmuStatus,
       onLive: (frame) => overlay.onLive(frame),
+      onLapSaved: () => overlay.onLapSaved(),
     });
   }
 
