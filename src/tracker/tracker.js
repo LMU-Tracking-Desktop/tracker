@@ -1,33 +1,17 @@
 /**
  * LMU Lap Tracker - versao desktop (Electron).
- * Le shared memory do LMU e salva voltas direto no SQLite via Prisma.
+ * Le shared memory NATIVA do LMU (LMU_Data) e salva voltas direto no SQLite via Prisma.
  *
  * Uso:
  *   const { startTracker } = require("./tracker");
  *   const stop = startTracker({ cfg, prisma, log });  // retorna stop()
  */
 
-const sm = require("./rf2_sm");
+const sm = require("./lmu_sm");
 
 // ── Helpers ─────────────────────────────────────────────
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function findPlayer(scoring) {
-  const n = scoring.mScoringInfo.mNumVehicles;
-  for (let i = 0; i < n; i++) {
-    if (scoring.mVehicles[i].mIsPlayer) return scoring.mVehicles[i];
-  }
-  return null;
-}
-
-function findPlayerTelemetry(telemetry, playerId) {
-  const n = telemetry.mNumVehicles;
-  for (let i = 0; i < n; i++) {
-    if (telemetry.mVehicles[i].mID === playerId) return telemetry.mVehicles[i];
-  }
-  return null;
-}
 
 function sessionTypeFromCode(code) {
   if (code === 0) return "testday";
@@ -156,8 +140,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
     return;
   }
 
-  let scoringBuf = null;
-  let telemetryBuf = null;
+  let smHandle = null;
   let lastTelemetry = null;
   let sessionId = null;
   let lastLapNumber = -1;
@@ -189,15 +172,11 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
     const r1 = (n) => Math.round(n * 10) / 10;
     while (!shouldStop()) {
       await sleep(SAMPLE_MS);
-      if (!scoringBuf || !telemetryBuf) continue;
-      const scoring = sm.readBuffer(scoringBuf);
-      if (!scoring) continue;
-      const player = findPlayer(scoring);
-      if (!player) continue;
-      const telemetry = sm.readBuffer(telemetryBuf);
-      if (!telemetry) continue;
-      const playerTelem = findPlayerTelemetry(telemetry, player.mID);
-      if (!playerTelem) continue;
+      if (!smHandle) continue;
+      const snap = sm.readSnapshot(smHandle);
+      if (!snap || !snap.player || !snap.telemetry) continue;
+      const player = snap.player;
+      const playerTelem = snap.telemetry;
 
       const mTotalLaps = player.mTotalLaps;
       if (mTotalLaps !== sampleBucketLap) {
@@ -231,8 +210,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
 
       // Tempo REAL decorrido na volta: ET global - ET quando lap comecou.
       // (mTimeIntoLap do rF2 e estimativa baseada em posicao, nao serve pra delta.)
-      const tReal =
-        scoring.mScoringInfo.mCurrentET - (player.mLapStartET ?? 0);
+      const tReal = snap.scoring.mCurrentET - (player.mLapStartET ?? 0);
 
       currentSamples.push({
         d: r1(player.mLapDist),
@@ -254,10 +232,9 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
   while (!shouldStop()) {
     await sleep(pollMs);
 
-    if (!scoringBuf) scoringBuf = sm.openScoring();
-    if (!telemetryBuf) telemetryBuf = sm.openTelemetry();
+    if (!smHandle) smHandle = sm.open();
 
-    if (!scoringBuf) {
+    if (!smHandle) {
       if (!waitingForLmu) {
         log("[...] LMU desconectado. Aguardando...");
         waitingForLmu = true;
@@ -268,31 +245,26 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
       continue;
     }
 
-    const scoring = sm.readBuffer(scoringBuf);
-    if (!scoring) continue;
+    const snap = sm.readSnapshot(smHandle);
+    if (!snap) continue;
 
-    const telemetryNow = telemetryBuf ? sm.readBuffer(telemetryBuf) : null;
-    if (telemetryNow) lastTelemetry = telemetryNow;
-    const telemetry = telemetryNow || lastTelemetry;
+    if (snap.telemetry) lastTelemetry = snap.telemetry;
+    const playerTelem = snap.telemetry || lastTelemetry;
 
     if (waitingForLmu) {
       log("[OK] LMU conectado!");
-      const p0 = findPlayer(scoring);
+      const p0 = snap.player;
       log(
-        `[INIT] estado inicial: mTotalLaps=${p0?.mTotalLaps ?? "?"} mLapDist=${p0?.mLapDist?.toFixed?.(1) ?? "?"}m inRealtime=${scoring.mScoringInfo?.mInRealtime}`
+        `[INIT] estado inicial: mTotalLaps=${p0?.mTotalLaps ?? "?"} mLapDist=${p0?.mLapDist?.toFixed?.(1) ?? "?"}m inRealtime=${snap.scoring?.mInRealtime}`
       );
       waitingForLmu = false;
     }
 
-    const player = findPlayer(scoring);
+    const player = snap.player;
     if (!player) continue;
 
-    const playerTelem = telemetry
-      ? findPlayerTelemetry(telemetry, player.mID)
-      : null;
-
-    const track = scoring.mScoringInfo.mTrackName || "Unknown";
-    const sessionType = sessionTypeFromCode(scoring.mScoringInfo.mSession);
+    const track = snap.scoring.mTrackName || "Unknown";
+    const sessionType = sessionTypeFromCode(snap.scoring.mSession);
     const car = player.mVehicleName || "Unknown";
     const carClass = player.mVehicleClass || "Unknown";
     const lapNumber = player.mTotalLaps;
@@ -313,7 +285,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
     // Se mCurrentET caiu drasticamente, a sessao do LMU foi reiniciada.
     // Sem isso, o tracker pode continuar anexando voltas novas na sessao antiga
     // e sobrescrever laps via upsert (sessionId_lapNumber).
-    const currentET = scoring.mScoringInfo.mCurrentET;
+    const currentET = snap.scoring.mCurrentET;
     if (
       lastCurrentET != null &&
       typeof currentET === "number" &&
@@ -332,7 +304,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
     }
     lastCurrentET = currentET;
 
-    const inRealtime = scoring.mScoringInfo.mInRealtime === 1;
+    const inRealtime = snap.scoring.mInRealtime === true;
     const isNewSession =
       inRealtime &&
       (track !== lastTrack ||
@@ -508,6 +480,7 @@ async function runTracker({ cfg, prisma, log, shouldStop }) {
     lastLapNumber = lapNumber;
   }
 
+  if (smHandle) sm.close(smHandle);
   log("\n[FIM] Tracker encerrado.");
 }
 
