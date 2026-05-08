@@ -15,6 +15,7 @@ const { pathToFileURL } = require("node:url");
 const { startTracker } = require("./tracker/tracker.js");
 const { createPrisma } = require("./db/client.js");
 const { runMigrations } = require("./db/migrate.js");
+const overlay = require("./overlay/overlay.js");
 
 if (require("electron-squirrel-startup")) {
   app.quit();
@@ -819,12 +820,37 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
+  // Inicializa overlay (cria a janela transparente in-game escondida).
+  // Usa mesmo build do renderer via hash route #/overlay.
+  overlay.init({
+    prisma,
+    log: pushLog,
+    getConfig: () => lastConfig,
+    setConfig: async (partial) => {
+      const configPath = path.join(app.getPath("userData"), "config.json");
+      const next = { ...lastConfig, ...partial };
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(next, null, 2));
+      lastConfig = next;
+      return next;
+    },
+    mainWindowEnv: {
+      devUrl: typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined"
+        ? MAIN_WINDOW_VITE_DEV_SERVER_URL
+        : null,
+      viteName: typeof MAIN_WINDOW_VITE_NAME !== "undefined"
+        ? MAIN_WINDOW_VITE_NAME
+        : "main_window",
+    },
+  });
+
   if (prisma) {
     stopTracker = startTracker({
       cfg,
       prisma,
       log: pushLog,
       onStatus: setLmuStatus,
+      onLive: (frame) => overlay.onLive(frame),
     });
   }
 
@@ -836,6 +862,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", async () => {
   if (stopTracker) stopTracker();
+  overlay.shutdown();
   if (prisma) await prisma.$disconnect();
 });
 

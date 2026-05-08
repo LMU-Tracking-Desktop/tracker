@@ -39,4 +39,36 @@ contextBridge.exposeInMainWorld("api", {
   getConfig: () => ipcRenderer.invoke("config.get"),
   setConfig: (partial) => ipcRenderer.invoke("config.set", partial),
   getAppVersion: () => ipcRenderer.invoke("app.version"),
+
+  // ── Overlay ─────────────────────────────────────────────
+  // App principal (Sidebar + tela /overlays): controle e config.
+  setOverlayEnabled: (enabled) =>
+    ipcRenderer.invoke("overlay.setEnabled", enabled),
+  setOverlayEdit: (edit) => ipcRenderer.invoke("overlay.setEdit", edit),
+  getOverlayState: () => ipcRenderer.invoke("overlay.getState"),
+  getOverlayWidgets: () => ipcRenderer.invoke("overlay.getWidgets"),
+  setOverlayWidget: (id, partial) =>
+    ipcRenderer.invoke("overlay.setWidget", { id, partial }),
+
+  // Renderer da overlay window (rota #/overlay).
+  onOverlayTick: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("overlay-tick", listener);
+    return () => ipcRenderer.removeListener("overlay-tick", listener);
+  },
+  onOverlayMode: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("overlay-mode", listener);
+    return () => ipcRenderer.removeListener("overlay-mode", listener);
+  },
+  onOverlayWidgets: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("overlay-widgets", listener);
+    return () => ipcRenderer.removeListener("overlay-widgets", listener);
+  },
+  onOverlayRef: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("overlay-ref", listener);
+    return () => ipcRenderer.removeListener("overlay-ref", listener);
+  },
 });

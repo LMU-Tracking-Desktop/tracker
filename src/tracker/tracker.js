@@ -122,7 +122,7 @@ async function saveLap(prisma, sessionId, lap, log) {
 
 // ── Loop principal ──────────────────────────────────────
 
-async function runTracker({ cfg, prisma, log, shouldStop, onStatus }) {
+async function runTracker({ cfg, prisma, log, shouldStop, onStatus, onLive }) {
   const emitStatus = (connected) => {
     try {
       onStatus?.(connected);
@@ -173,9 +173,11 @@ async function runTracker({ cfg, prisma, log, shouldStop, onStatus }) {
   // (ex: mLastLapTime com 1 tick de lag → save pulado → lap seguinte sobrescrevia).
   const completedSamplesByLap = new Map();
 
-  // Loop separado a 20Hz coletando amostras de input
+  // Loop separado coletando amostras de input + emitindo telemetria viva
+  // pra overlays in-game. 33ms (~30Hz) — pedais visualmente fluidos sem custo
+  // alto. Dois usos: (a) buffer pra salvar com a volta, (b) live broadcast.
   (async () => {
-    const SAMPLE_MS = 50;
+    const SAMPLE_MS = 33;
     const r3 = (n) => Math.round(n * 1000) / 1000;
     const r1 = (n) => Math.round(n * 10) / 10;
     while (!shouldStop()) {
@@ -232,6 +234,41 @@ async function runTracker({ cfg, prisma, log, shouldStop, onStatus }) {
         x: r1(playerTelem.mPos.x),
         z: r1(playerTelem.mPos.z),
       });
+
+      // Emit live frame pra overlays. Inclui contexto que main precisa pra
+      // (a) decidir mostrar/esconder (inRealtime, track, carClass), (b)
+      // calcular delta vs refLap (lapDist, tReal, mTotalLaps), (c) widget
+      // de pneus (mWheels[i].mWear) e (d) filtrar por tipo de sessao.
+      if (onLive) {
+        try {
+          const wheels = playerTelem.mWheels || [];
+          onLive({
+            throttle: playerTelem.mUnfilteredThrottle,
+            brake: playerTelem.mUnfilteredBrake,
+            clutch: 0,
+            steering: playerTelem.mUnfilteredSteering,
+            rpm: playerTelem.mEngineRPM,
+            gear: playerTelem.mGear,
+            speed,
+            lapDist: player.mLapDist,
+            lapTime: tReal > 0 ? tReal : 0,
+            totalLaps: mTotalLaps,
+            inRealtime: snap.scoring.mInRealtime === true,
+            track: snap.scoring.mTrackName,
+            carClass: player.mVehicleClass,
+            sessionType: sessionTypeFromCode(snap.scoring.mSession),
+            // Pneus: 0..1 (0 = novo, 1 = careca). Ordem: FL, FR, RL, RR.
+            tireWear: [
+              wheels[0]?.mWear ?? 0,
+              wheels[1]?.mWear ?? 0,
+              wheels[2]?.mWear ?? 0,
+              wheels[3]?.mWear ?? 0,
+            ],
+          });
+        } catch (e) {
+          // Nao deixa erro de overlay matar sampler
+        }
+      }
     }
   })().catch((e) => log(`[SAMPLE ERRO] ${e.message}`));
 
@@ -496,11 +533,11 @@ async function runTracker({ cfg, prisma, log, shouldStop, onStatus }) {
   log("\n[FIM] Tracker encerrado.");
 }
 
-function startTracker({ cfg, prisma, log, onStatus }) {
+function startTracker({ cfg, prisma, log, onStatus, onLive }) {
   let stopped = false;
   const shouldStop = () => stopped;
 
-  runTracker({ cfg, prisma, log, shouldStop, onStatus }).catch((e) => {
+  runTracker({ cfg, prisma, log, shouldStop, onStatus, onLive }).catch((e) => {
     log(`[ERRO FATAL] ${e.message}`);
   });
 

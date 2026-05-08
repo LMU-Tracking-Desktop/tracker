@@ -1,7 +1,7 @@
 {
   "name": "lmu-desktop",
   "productName": "lmu-desktop",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "Le Mans Ultimate lap telemetry desktop app",
   "main": ".vite/build/main.js",
   "private": true,

@@ -6,6 +6,7 @@ const ITEMS = [
   { to: "/listagem", label: "LISTAGEM" },
   { to: "/sessoes", label: "SESSOES" },
   { to: "/dashboard", label: "DASHBOARD" },
+  { to: "/overlays", label: "OVERLAYS" },
   { to: "/logs", label: "LOGS" },
   { to: "/settings", label: "SETTINGS" },
 ];

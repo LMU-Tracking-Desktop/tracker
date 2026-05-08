@@ -12,6 +12,8 @@ import Dashboard from "./routes/Dashboard.jsx";
 import Settings from "./routes/Settings.jsx";
 import Replay from "./routes/Replay.jsx";
 import Telemetria from "./routes/Telemetria.jsx";
+import Overlay from "./routes/Overlay.jsx";
+import Overlays from "./routes/Overlays.jsx";
 import "./styles/globals.css";
 
 createRoot(document.getElementById("root")).render(
@@ -21,6 +23,8 @@ createRoot(document.getElementById("root")).render(
       <Routes>
         {/* Replay em rota standalone (sem Sidebar/layout) pra minimizar DOM */}
         <Route path="/replay/:lapId" element={<Replay />} />
+        {/* Overlay in-game — janela transparente separada usa esta rota */}
+        <Route path="/overlay" element={<Overlay />} />
         <Route element={<App />}>
           <Route index element={<Home />} />
           <Route path="/listagem" element={<Listagem />} />
@@ -31,6 +35,7 @@ createRoot(document.getElementById("root")).render(
             element={<Telemetria />}
           />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/overlays" element={<Overlays />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
