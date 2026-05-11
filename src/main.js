@@ -21,6 +21,22 @@ if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
+// Impede multiplas instancias: se ja tem uma rodando, foca a janela existente
+// e mata esta. Sem isso, dois cliques no atalho da area de trabalho abrem o
+// app duas vezes (e o tracker tenta ler a shared memory em paralelo).
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Protocolo custom pra servir arquivos grandes de ./assets (dev) ou
 // process.resourcesPath/assets (prod). Deve ser registrado ANTES de app.whenReady.
 protocol.registerSchemesAsPrivileged([
@@ -278,6 +294,15 @@ ipcMain.handle(
 // Melhor S1/S2/S3 e melhor volta total na pista+classe, considerando TODAS as
 // sessoes (inclusive a atual). Usado pra montar a "volta ideal teorica" no
 // dashboard da sessao.
+//
+// Filtros aplicados (em ordem):
+// 1. Soma dos setores ~= lapTime (tolerancia 1.5s) — corta voltas com setores
+//    parciais/corrompidos.
+// 2. lapTime da volta <= 1.15 * melhor lapTime consistente — uma volta que
+//    levou muito mais tempo que seu PB nao e representativa, mesmo que tenha
+//    setores "internamente consistentes" (ex: out-lap, spin recovery, formation
+//    lap onde o S3 saiu normal mas S1+S2 inflaram).
+// 3. Cada setor >= 0.75 * mediana daquele setor — pega outliers extremos.
 ipcMain.handle(
   "tracks.bestSectors",
   async (_e, { trackId, carClass } = {}) => {
@@ -286,38 +311,20 @@ ipcMain.handle(
       trackId,
       ...(carClass ? { carClass } : {}),
     };
-    const pickSector = (key) =>
-      prisma.lap.findFirst({
-        where: {
-          isValid: true,
-          [key]: { gt: 0 },
-          session: sessionFilter,
-        },
-        orderBy: { [key]: "asc" },
-        select: {
-          id: true,
-          lapNumber: true,
-          sector1: true,
-          sector2: true,
-          sector3: true,
-          createdAt: true,
-          session: {
-            select: {
-              id: true,
-              startedAt: true,
-              car: true,
-              type: true,
-            },
-          },
-        },
-      });
-    const pickFull = prisma.lap.findFirst({
+    const SECTOR_SUM_TOL = 1.5;
+    const MAX_LAP_RATIO = 1.15; // volta-fonte <= 115% do melhor lapTime
+    const MIN_SECTOR_RATIO = 0.75;
+    const MIN_LAPS_FOR_MEDIAN_FILTER = 6;
+
+    const allValid = await prisma.lap.findMany({
       where: {
         isValid: true,
         lapTime: { gt: 0 },
+        sector1: { gt: 0 },
+        sector2: { gt: 0 },
+        sector3: { gt: 0 },
         session: sessionFilter,
       },
-      orderBy: { lapTime: "asc" },
       select: {
         id: true,
         lapNumber: true,
@@ -336,12 +343,54 @@ ipcMain.handle(
         },
       },
     });
-    const [s1, s2, s3, full] = await Promise.all([
-      pickSector("sector1"),
-      pickSector("sector2"),
-      pickSector("sector3"),
-      pickFull,
-    ]);
+
+    // Filtro 1: soma dos setores bate com o lapTime
+    const consistent = allValid.filter((l) => {
+      const sum = l.sector1 + l.sector2 + l.sector3;
+      return Math.abs(sum - l.lapTime) <= SECTOR_SUM_TOL;
+    });
+
+    if (consistent.length === 0) {
+      return { sector1: null, sector2: null, sector3: null, bestLap: null };
+    }
+
+    // Filtro 2: volta-fonte tem que ter lapTime razoavel vs melhor real
+    const bestConsistentLapTime = Math.min(
+      ...consistent.map((l) => l.lapTime)
+    );
+    const onPace = consistent.filter(
+      (l) => l.lapTime <= bestConsistentLapTime * MAX_LAP_RATIO
+    );
+
+    // Filtro 3: cada setor dentro do range razoavel (vs mediana)
+    const median = (arr) => {
+      if (arr.length === 0) return null;
+      const sorted = [...arr].sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length / 2)];
+    };
+    let filtered = onPace;
+    if (onPace.length >= MIN_LAPS_FOR_MEDIAN_FILTER) {
+      const medS1 = median(onPace.map((l) => l.sector1));
+      const medS2 = median(onPace.map((l) => l.sector2));
+      const medS3 = median(onPace.map((l) => l.sector3));
+      filtered = onPace.filter(
+        (l) =>
+          l.sector1 >= medS1 * MIN_SECTOR_RATIO &&
+          l.sector2 >= medS2 * MIN_SECTOR_RATIO &&
+          l.sector3 >= medS3 * MIN_SECTOR_RATIO
+      );
+    }
+
+    const minBy = (arr, key) =>
+      arr.reduce(
+        (best, l) => (best == null || l[key] < best[key] ? l : best),
+        null
+      );
+    const s1 = minBy(filtered, "sector1");
+    const s2 = minBy(filtered, "sector2");
+    const s3 = minBy(filtered, "sector3");
+    const full = minBy(filtered, "lapTime");
+
     const toRef = (lap, key) =>
       lap
         ? {

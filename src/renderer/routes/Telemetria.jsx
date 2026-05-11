@@ -575,23 +575,67 @@ export default function Telemetria() {
             ·{" "}
             {Math.round(zoomRange[1] - zoomRange[0])}m
           </span>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setShowBestInRange(true)}
-              title="Voltas mais rápidas neste trecho"
-            >
-              🔍 MELHORES NESTE TRECHO
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setZoomRange(null)}
-            >
-              RESET ZOOM
-            </button>
-          </div>
+          {(() => {
+            const lapMaxD = telemetry?.[telemetry.length - 1]?.d ?? 0;
+            const lapMinD = telemetry?.[0]?.d ?? 0;
+            const [zFrom, zTo] = zoomRange;
+            const atStart = zFrom <= lapMinD + 1;
+            const atEnd = zTo >= lapMaxD - 1;
+            const w = zTo - zFrom;
+            return (
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    const newFrom = Math.max(lapMinD, zFrom - w * 0.5);
+                    if (newFrom <= lapMinD + 1 && atEnd) {
+                      setZoomRange(null);
+                    } else {
+                      setZoomRange([newFrom, zTo]);
+                    }
+                  }}
+                  disabled={atStart}
+                  style={{ opacity: atStart ? 0.4 : 1 }}
+                  title="Estender o zoom pra trás"
+                >
+                  ← AMPLIAR
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    const newTo = Math.min(lapMaxD, zTo + w * 0.5);
+                    if (newTo >= lapMaxD - 1 && atStart) {
+                      setZoomRange(null);
+                    } else {
+                      setZoomRange([zFrom, newTo]);
+                    }
+                  }}
+                  disabled={atEnd}
+                  style={{ opacity: atEnd ? 0.4 : 1 }}
+                  title="Estender o zoom pra frente"
+                >
+                  AMPLIAR →
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowBestInRange(true)}
+                  title="Voltas mais rápidas neste trecho"
+                >
+                  MELHORES NESTE TRECHO
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setZoomRange(null)}
+                >
+                  RESET ZOOM
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -931,6 +975,7 @@ export default function Telemetria() {
         deltas={segmentDelta}
         telemetry={telemetry}
         referenceTelemetry={referenceTelemetry}
+        onSegmentSelect={(seg) => setZoomRange([seg.from, seg.to])}
       />
 
       <LapPickerModal
