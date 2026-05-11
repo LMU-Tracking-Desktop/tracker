@@ -275,6 +275,94 @@ ipcMain.handle(
   }
 );
 
+// Melhor S1/S2/S3 e melhor volta total na pista+classe, considerando TODAS as
+// sessoes (inclusive a atual). Usado pra montar a "volta ideal teorica" no
+// dashboard da sessao.
+ipcMain.handle(
+  "tracks.bestSectors",
+  async (_e, { trackId, carClass } = {}) => {
+    if (!prisma || !trackId) return null;
+    const sessionFilter = {
+      trackId,
+      ...(carClass ? { carClass } : {}),
+    };
+    const pickSector = (key) =>
+      prisma.lap.findFirst({
+        where: {
+          isValid: true,
+          [key]: { gt: 0 },
+          session: sessionFilter,
+        },
+        orderBy: { [key]: "asc" },
+        select: {
+          id: true,
+          lapNumber: true,
+          sector1: true,
+          sector2: true,
+          sector3: true,
+          createdAt: true,
+          session: {
+            select: {
+              id: true,
+              startedAt: true,
+              car: true,
+              type: true,
+            },
+          },
+        },
+      });
+    const pickFull = prisma.lap.findFirst({
+      where: {
+        isValid: true,
+        lapTime: { gt: 0 },
+        session: sessionFilter,
+      },
+      orderBy: { lapTime: "asc" },
+      select: {
+        id: true,
+        lapNumber: true,
+        lapTime: true,
+        sector1: true,
+        sector2: true,
+        sector3: true,
+        createdAt: true,
+        session: {
+          select: {
+            id: true,
+            startedAt: true,
+            car: true,
+            type: true,
+          },
+        },
+      },
+    });
+    const [s1, s2, s3, full] = await Promise.all([
+      pickSector("sector1"),
+      pickSector("sector2"),
+      pickSector("sector3"),
+      pickFull,
+    ]);
+    const toRef = (lap, key) =>
+      lap
+        ? {
+            value: lap[key],
+            lapId: lap.id,
+            lapNumber: lap.lapNumber,
+            sessionId: lap.session.id,
+            sessionStartedAt: lap.session.startedAt,
+            car: lap.session.car,
+            type: lap.session.type,
+          }
+        : null;
+    return {
+      sector1: toRef(s1, "sector1"),
+      sector2: toRef(s2, "sector2"),
+      sector3: toRef(s3, "sector3"),
+      bestLap: toRef(full, "lapTime"),
+    };
+  }
+);
+
 // ── Export/Import de voltas (clipboard) ─────────────────
 
 // Monta o payload JSON completo de uma volta pra copiar.

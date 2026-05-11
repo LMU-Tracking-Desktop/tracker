@@ -9,7 +9,7 @@ import {
   TyreWearChart,
   FuelChart,
 } from "../components/SessionCharts.jsx";
-import { formatLapTime, formatDateTime } from "../lib/format.js";
+import { formatLapTime, formatSector, formatDateTime } from "../lib/format.js";
 import { stats } from "../lib/stats.js";
 import { computeOutlierSet } from "../lib/outlier.js";
 
@@ -119,6 +119,360 @@ function StatCard({ label, value, color, hint }) {
   );
 }
 
+function fmtShortDate(d) {
+  if (!d) return "";
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
+function IdealSectorCell({ k, ref, sessionBest, sessionId }) {
+  if (!ref) {
+    return (
+      <div
+        style={{
+          padding: "var(--pad)",
+          background: "var(--bg-1)",
+          borderRight: "1px solid var(--bd-0)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.18em",
+            color: "var(--tx-3)",
+          }}
+        >
+          {k}
+        </span>
+        <span
+          className="mono"
+          style={{ fontSize: 20, fontWeight: 600, color: "var(--tx-3)" }}
+        >
+          —
+        </span>
+      </div>
+    );
+  }
+
+  const fromThisSession = ref.sessionId === sessionId;
+  const gap =
+    sessionBest != null && ref.value != null ? sessionBest - ref.value : null;
+
+  return (
+    <div
+      style={{
+        padding: "var(--pad)",
+        background: "var(--bg-1)",
+        borderRight: "1px solid var(--bd-0)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.18em",
+            color: "var(--tx-3)",
+          }}
+        >
+          {k}
+        </span>
+        <span
+          className="mono"
+          style={{
+            fontSize: 8,
+            letterSpacing: "0.16em",
+            padding: "2px 6px",
+            border: `1px solid ${
+              fromThisSession ? "var(--ok)" : "var(--bd-1)"
+            }`,
+            color: fromThisSession ? "var(--ok)" : "var(--tx-2)",
+          }}
+        >
+          {fromThisSession ? "ESTA SESSÃO" : fmtShortDate(ref.sessionStartedAt)}
+        </span>
+      </div>
+      <span
+        className="mono"
+        style={{
+          fontSize: 22,
+          fontWeight: 600,
+          color: fromThisSession ? "var(--ok)" : "var(--tx-0)",
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
+      >
+        {formatSector(ref.value)}
+      </span>
+      {fromThisSession ? (
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-3)",
+          }}
+        >
+          SEU PB
+        </span>
+      ) : sessionBest != null ? (
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: 2 }}
+          className="mono"
+        >
+          <span
+            style={{
+              fontSize: 9,
+              letterSpacing: "0.14em",
+              color: "var(--tx-3)",
+            }}
+          >
+            ESTA SESSÃO {formatSector(sessionBest)}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: gap > 0.5 ? "var(--crit)" : "var(--warn)",
+              fontWeight: 500,
+            }}
+          >
+            +{gap.toFixed(3)}s
+          </span>
+        </div>
+      ) : (
+        <span
+          className="mono"
+          style={{
+            fontSize: 9,
+            letterSpacing: "0.14em",
+            color: "var(--tx-3)",
+          }}
+        >
+          SEM REGISTRO NESTA SESSÃO
+        </span>
+      )}
+    </div>
+  );
+}
+
+function IdealLapCard({
+  bestSectors,
+  sessionBestS1,
+  sessionBestS2,
+  sessionBestS3,
+  sessionBestLap,
+  sessionId,
+}) {
+  if (!bestSectors) return null;
+  const s1 = bestSectors.sector1?.value;
+  const s2 = bestSectors.sector2?.value;
+  const s3 = bestSectors.sector3?.value;
+  const ideal = s1 != null && s2 != null && s3 != null ? s1 + s2 + s3 : null;
+  const gap =
+    ideal != null && sessionBestLap != null ? sessionBestLap - ideal : null;
+  const overallBest = bestSectors.bestLap?.value ?? null;
+  const overallFromThisSession =
+    bestSectors.bestLap?.sessionId === sessionId;
+
+  return (
+    <div style={{ padding: "0 var(--pad) var(--pad)" }}>
+      <div
+        style={{
+          background: "var(--bg-1)",
+          border: "1px solid var(--bd-0)",
+        }}
+      >
+        <div
+          style={{
+            padding: "10px 14px",
+            borderBottom: "1px solid var(--bd-0)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--tx-1)",
+              textTransform: "uppercase",
+              fontWeight: 600,
+            }}
+          >
+            Volta Ideal · Esta Pista + Classe
+          </span>
+          <span
+            className="mono"
+            style={{
+              fontSize: 9,
+              letterSpacing: "0.16em",
+              color: "var(--tx-3)",
+              textTransform: "uppercase",
+            }}
+          >
+            Melhores Setores em Todas as Sessões
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1.2fr 1fr",
+            borderBottom: "1px solid var(--bd-0)",
+          }}
+        >
+          <div
+            style={{
+              padding: "var(--pad)",
+              borderRight: "1px solid var(--bd-0)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.18em",
+                color: "var(--tx-3)",
+                textTransform: "uppercase",
+              }}
+            >
+              Potencial Teórico
+            </span>
+            <span
+              className="mono"
+              style={{
+                fontSize: 34,
+                fontWeight: 600,
+                color: "var(--accent)",
+                letterSpacing: "-0.02em",
+                lineHeight: 1,
+              }}
+            >
+              {ideal != null ? formatLapTime(ideal) : "—"}
+            </span>
+            {gap != null && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.04em",
+                  color: gap > 0.1 ? "var(--warn)" : "var(--ok)",
+                }}
+              >
+                {gap > 0
+                  ? `−${gap.toFixed(3)}s vs sua melhor desta sessão`
+                  : "VOCÊ JÁ ESTÁ NO IDEAL DESTA SESSÃO"}
+                {sessionBestLap != null && gap > 0 && (
+                  <span style={{ color: "var(--tx-3)", marginLeft: 8 }}>
+                    ({formatLapTime(sessionBestLap)})
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+
+          <div
+            style={{
+              padding: "var(--pad)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <span
+              className="mono"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.18em",
+                color: "var(--tx-3)",
+                textTransform: "uppercase",
+              }}
+            >
+              Melhor Volta Real (Histórico)
+            </span>
+            <span
+              className="mono"
+              style={{
+                fontSize: 26,
+                fontWeight: 600,
+                color: overallFromThisSession ? "var(--ok)" : "var(--tx-0)",
+                letterSpacing: "-0.02em",
+                lineHeight: 1,
+              }}
+            >
+              {overallBest != null ? formatLapTime(overallBest) : "—"}
+            </span>
+            {bestSectors.bestLap && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: 9,
+                  letterSpacing: "0.14em",
+                  color: "var(--tx-3)",
+                  textTransform: "uppercase",
+                }}
+              >
+                {overallFromThisSession
+                  ? "FEITA NESTA SESSÃO"
+                  : `EM ${fmtShortDate(
+                      bestSectors.bestLap.sessionStartedAt
+                    )} · ${bestSectors.bestLap.car || ""}`}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+          }}
+        >
+          <IdealSectorCell
+            k="S1"
+            ref={bestSectors.sector1}
+            sessionBest={sessionBestS1}
+            sessionId={sessionId}
+          />
+          <IdealSectorCell
+            k="S2"
+            ref={bestSectors.sector2}
+            sessionBest={sessionBestS2}
+            sessionId={sessionId}
+          />
+          <IdealSectorCell
+            k="S3"
+            ref={bestSectors.sector3}
+            sessionBest={sessionBestS3}
+            sessionId={sessionId}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClassPill({ cls }) {
   if (!cls) return null;
   return (
@@ -158,6 +512,7 @@ export default function SessionDetail() {
     );
   };
   const [outlierPct, setOutlierPct] = useState(7);
+  const [bestSectors, setBestSectors] = useState(null);
 
   useEffect(() => {
     window.api?.getConfig?.().then((c) => {
@@ -207,6 +562,24 @@ export default function SessionDetail() {
       clearInterval(id);
     };
   }, [sessionId]);
+
+  // Melhores setores em todas as sessoes (mesma pista + classe). Recarrega
+  // junto com `data` pra refletir voltas novas que viraram PB em tempo real.
+  useEffect(() => {
+    if (!data?.session?.trackId) return;
+    let cancelled = false;
+    window.api
+      ?.getBestSectorsForTrack?.({
+        trackId: data.session.trackId,
+        carClass: data.session.carClass,
+      })
+      .then((r) => {
+        if (!cancelled) setBestSectors(r);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.session?.trackId, data?.session?.carClass, data?.laps?.length]);
 
   const emptyBox = (label) => (
     <div
@@ -476,6 +849,16 @@ export default function SessionDetail() {
           />
         </div>
       </div>
+
+      {/* Volta ideal — melhores setores na pista + classe (todas sessoes) */}
+      <IdealLapCard
+        bestSectors={bestSectors}
+        sessionBestS1={bestS1}
+        sessionBestS2={bestS2}
+        sessionBestS3={bestS3}
+        sessionBestLap={s?.min ?? null}
+        sessionId={session.id}
+      />
 
       {/* Secondary stats row */}
       <div

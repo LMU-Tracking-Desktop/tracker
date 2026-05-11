@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld("api", {
   getLapTelemetry: (lapId) => ipcRenderer.invoke("laps.telemetry", lapId),
   getTopLapsByTrack: (filter) =>
     ipcRenderer.invoke("laps.topByTrack", filter),
+  getBestSectorsForTrack: (filter) =>
+    ipcRenderer.invoke("tracks.bestSectors", filter),
   exportLap: (lapId) => ipcRenderer.invoke("laps.export", lapId),
   createImport: (payload) => ipcRenderer.invoke("imports.create", payload),
   listImportsForTrack: (filter) =>

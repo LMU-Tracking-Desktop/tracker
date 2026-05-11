@@ -13,7 +13,13 @@ import CopyLapButton from "../components/CopyLapButton.jsx";
 import BestInRangePanel from "../components/BestInRangePanel.jsx";
 import LapPickerModal from "../components/LapPickerModal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
-import { downsample, distanceAtTime } from "../lib/telemetry.js";
+import SegmentAnalysisModal from "../components/SegmentAnalysisModal.jsx";
+import {
+  downsample,
+  distanceAtTime,
+  detectSegments,
+  segmentDeltas,
+} from "../lib/telemetry.js";
 
 function fmtLapTime(t) {
   if (t == null || t <= 0) return "sem tempo";
@@ -178,6 +184,7 @@ export default function Telemetria() {
   const [showImport, setShowImport] = useState(false);
   const [showBestInRange, setShowBestInRange] = useState(false);
   const [pickerMode, setPickerMode] = useState(null);
+  const [showSegmentAnalysis, setShowSegmentAnalysis] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +232,18 @@ export default function Telemetria() {
     () => (referenceTelemetry ? downsample(referenceTelemetry, 700) : null),
     [referenceTelemetry]
   );
+
+  // Detecta segmentos (FREADA/SAIDA/RETA) na volta de referencia.
+  // Limites em distancia servem pra medir as duas voltas no mesmo trecho.
+  const segments = useMemo(() => {
+    if (!referenceTelemetry) return [];
+    return detectSegments(referenceTelemetry);
+  }, [referenceTelemetry]);
+
+  const segmentDelta = useMemo(() => {
+    if (!segments.length || !telemetry || !referenceTelemetry) return [];
+    return segmentDeltas(telemetry, referenceTelemetry, segments);
+  }, [segments, telemetry, referenceTelemetry]);
 
   const sectorMarkers = useMemo(() => {
     if (!telemetry || !selectedLapId) return null;
@@ -445,6 +464,16 @@ export default function Telemetria() {
             >
               IMPORTAR
             </button>
+            {referenceTelemetry && segmentDelta.length > 0 && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowSegmentAnalysis(true)}
+                title="Abrir análise por segmento (FREADA/SAÍDA/RETA)"
+              >
+                ANÁLISE POR SEGMENTO
+              </button>
+            )}
             <button
               type="button"
               className="btn"
@@ -894,6 +923,14 @@ export default function Telemetria() {
         otherLaps={otherLaps}
         importedLaps={importedLaps}
         onSelect={(id) => setReferenceLapId(id)}
+      />
+
+      <SegmentAnalysisModal
+        open={showSegmentAnalysis}
+        onClose={() => setShowSegmentAnalysis(false)}
+        deltas={segmentDelta}
+        telemetry={telemetry}
+        referenceTelemetry={referenceTelemetry}
       />
 
       <LapPickerModal

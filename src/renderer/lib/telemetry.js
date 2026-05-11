@@ -121,6 +121,251 @@ export function computeDelta(current, reference) {
   }));
 }
 
+// ─── Mini-setores por fase de pilotagem ─────────────────────────────────
+//
+// Em vez de quadrados de distancia fixa (que misturam reta + entrada de
+// curva no mesmo bin), os segmentos sao detectados a partir dos sinais
+// de freio/acelerador/velocidade DA volta de referencia, e os limites
+// em distancia sao reutilizados pra medir a sua volta — garantindo
+// comparacao apples-to-apples no mesmo pedaco de pista.
+//
+// Cada curva vira 2 fases: FREADA (brake-on → vmin) e SAIDA (vmin →
+// throttle 100%). Entre curvas, RETA. Auto-numeradas T1, T2, ...
+
+export function detectSegments(samples, opts = {}) {
+  if (!samples || samples.length < 20) return [];
+
+  // Prominencia minima (km/h) que o vale precisa ter pros lados pra contar
+  // como curva. Picos pequenos viram ruido e sao ignorados.
+  const PROMINENCE_KMH = opts.prominenceKmh ?? 22;
+  const THROTTLE_FULL = opts.throttleFull ?? 0.92;
+  const BRAKE_ON = opts.brakeOn ?? 0.05;
+  const MIN_CORNER_LEN = opts.minCornerLen ?? 30;
+  const MERGE_GAP_M = opts.mergeGapM ?? 30;
+  const SMOOTH = 4;
+  const TIME_REQUIRED = 0.2;
+
+  const n = samples.length;
+
+  // Suaviza velocidade pra remover oscilacao de baixa amplitude
+  const vSmooth = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0;
+    let c = 0;
+    for (let j = Math.max(0, i - SMOOTH); j <= Math.min(n - 1, i + SMOOTH); j++) {
+      sum += samples[j].v ?? 0;
+      c++;
+    }
+    vSmooth[i] = sum / c;
+  }
+
+  // ── 1. Detecta extremos por prominencia (state machine rising/falling).
+  // So registra um pico/vale quando a velocidade inverte direcao por pelo
+  // menos PROMINENCE_KMH/2 km/h — wobbles menores que isso sao filtrados.
+  const HYST = PROMINENCE_KMH / 2;
+  const extrema = []; // [{idx, v, kind: 'max'|'min'}]
+  let state = "rising"; // arbitrario: ja confirma quando inverter
+  let candIdx = 0;
+  let candV = vSmooth[0];
+
+  // Inicializa estado com base nas primeiras amostras
+  // (procura primeiro movimento significativo)
+  for (let i = 1; i < n; i++) {
+    if (vSmooth[i] > candV + HYST * 0.3) {
+      state = "rising";
+      candIdx = i;
+      candV = vSmooth[i];
+      break;
+    }
+    if (vSmooth[i] < candV - HYST * 0.3) {
+      state = "falling";
+      candIdx = i;
+      candV = vSmooth[i];
+      break;
+    }
+  }
+
+  for (let i = 1; i < n; i++) {
+    const v = vSmooth[i];
+    if (state === "rising") {
+      if (v > candV) {
+        candV = v;
+        candIdx = i;
+      } else if (candV - v >= HYST) {
+        // dropped enough — confirma pico
+        extrema.push({ idx: candIdx, v: candV, kind: "max" });
+        state = "falling";
+        candV = v;
+        candIdx = i;
+      }
+    } else {
+      if (v < candV) {
+        candV = v;
+        candIdx = i;
+      } else if (v - candV >= HYST) {
+        // rose enough — confirma vale
+        extrema.push({ idx: candIdx, v: candV, kind: "min" });
+        state = "rising";
+        candV = v;
+        candIdx = i;
+      }
+    }
+  }
+  // Fecha o ultimo extremo (em particular se a volta termina numa subida apos vmin)
+  if (extrema.length > 0 && state === "falling") {
+    extrema.push({ idx: candIdx, v: candV, kind: "min" });
+  }
+
+  // ── 2. Pega so os vales — cada um e um candidato a curva.
+  let valleys = extrema.filter((e) => e.kind === "min");
+
+  // Mescla vales muito proximos (mesma curva complexa / chicane com 2 apexes):
+  // mantem o de menor velocidade.
+  const mergedValleys = [];
+  for (const v of valleys) {
+    if (mergedValleys.length > 0) {
+      const last = mergedValleys[mergedValleys.length - 1];
+      const gap = samples[v.idx].d - samples[last.idx].d;
+      if (gap < MERGE_GAP_M) {
+        if (v.v < last.v) {
+          mergedValleys[mergedValleys.length - 1] = v;
+        }
+        continue;
+      }
+    }
+    mergedValleys.push(v);
+  }
+  valleys = mergedValleys;
+
+  // ── 3. Pra cada vale, expande entrada (pra tras) e saida (pra frente).
+  // Entrada: enquanto velocidade ainda desce OU ha freio (>=5%), limite 250m.
+  // Saida: ate o gas ficar >=92% por 0.2s consecutivos, limite 350m.
+  const corners = [];
+  let cornerNum = 0;
+  for (const valley of valleys) {
+    const vminIdx = valley.idx;
+
+    let entryIdx = vminIdx;
+    for (let i = vminIdx - 1; i >= 0; i--) {
+      const s = samples[i];
+      const braking = (s.br ?? 0) >= BRAKE_ON;
+      const decelerating = vSmooth[i] > vSmooth[i + 1];
+      if (braking || decelerating) {
+        entryIdx = i;
+      } else {
+        break;
+      }
+      if (samples[vminIdx].d - s.d > 250) break;
+    }
+
+    let exitIdx = vminIdx;
+    let streakStart = -1;
+    for (let i = vminIdx + 1; i < n; i++) {
+      const s = samples[i];
+      if ((s.th ?? 0) >= THROTTLE_FULL) {
+        if (streakStart === -1) streakStart = i;
+        if (s.t - samples[streakStart].t >= TIME_REQUIRED) {
+          exitIdx = streakStart;
+          break;
+        }
+      } else {
+        streakStart = -1;
+      }
+      if (s.d - samples[vminIdx].d > 350) {
+        exitIdx = i;
+        break;
+      }
+    }
+    if (exitIdx === vminIdx) exitIdx = Math.min(n - 1, vminIdx + 5);
+
+    const cornerLen = samples[exitIdx].d - samples[entryIdx].d;
+    if (cornerLen < MIN_CORNER_LEN) continue;
+
+    cornerNum++;
+    corners.push({
+      cornerIdx: cornerNum,
+      brakeStartD: samples[entryIdx].d,
+      vminD: samples[vminIdx].d,
+      throttleFullD: samples[exitIdx].d,
+      vmin: samples[vminIdx].v ?? valley.v,
+    });
+  }
+
+  const MIN_STRAIGHT_LEN = opts.minStraightLen ?? 40;
+
+  const segments = [];
+  const lapStartD = samples[0].d;
+  const lapEndD = samples[n - 1].d;
+
+  if (corners.length > 0 && corners[0].brakeStartD - lapStartD > MIN_STRAIGHT_LEN) {
+    segments.push({
+      name: "RETA → T1",
+      type: "straight",
+      from: lapStartD,
+      to: corners[0].brakeStartD,
+    });
+  }
+
+  for (let k = 0; k < corners.length; k++) {
+    const c = corners[k];
+    if (c.vminD > c.brakeStartD) {
+      segments.push({
+        name: `FREADA T${c.cornerIdx}`,
+        type: "braking",
+        cornerIdx: c.cornerIdx,
+        from: c.brakeStartD,
+        to: c.vminD,
+        vmin: c.vmin,
+      });
+    }
+    if (c.throttleFullD > c.vminD) {
+      segments.push({
+        name: `SAÍDA T${c.cornerIdx}`,
+        type: "exit",
+        cornerIdx: c.cornerIdx,
+        from: c.vminD,
+        to: c.throttleFullD,
+      });
+    }
+    if (k < corners.length - 1) {
+      const next = corners[k + 1];
+      if (next.brakeStartD - c.throttleFullD > MIN_STRAIGHT_LEN) {
+        segments.push({
+          name: `RETA T${c.cornerIdx}→T${next.cornerIdx}`,
+          type: "straight",
+          from: c.throttleFullD,
+          to: next.brakeStartD,
+        });
+      }
+    } else if (lapEndD - c.throttleFullD > MIN_STRAIGHT_LEN) {
+      segments.push({
+        name: `RETA T${c.cornerIdx} → META`,
+        type: "straight",
+        from: c.throttleFullD,
+        to: lapEndD,
+      });
+    }
+  }
+
+  return segments;
+}
+
+// Para cada segmento, mede o tempo gasto na current e na reference e
+// calcula o delta. Os limites em distancia vem da ref (passada pra
+// `detectSegments`) — mesma janela de pista nas duas voltas.
+export function segmentDeltas(currentSamples, referenceSamples, segments) {
+  return segments.map((seg) => {
+    const tCur = timeInRange(currentSamples, seg.from, seg.to);
+    const tRef = timeInRange(referenceSamples, seg.from, seg.to);
+    return {
+      ...seg,
+      timeCurrent: tCur,
+      timeReference: tRef,
+      delta: tCur != null && tRef != null ? tCur - tRef : null,
+    };
+  });
+}
+
 // Merge current + aligned reference em um unico dataset pros grafios overlay.
 export function mergeForChart(current, reference) {
   const aligned = alignReferenceTo(current, reference);
