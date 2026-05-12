@@ -182,8 +182,19 @@ async function refreshRefIfNeeded(track, carClass) {
   if (!track || !carClass) return;
   if (track === state.refTrack && carClass === state.refCarClass && state.refLap)
     return;
+  const changed =
+    track !== state.refTrack || carClass !== state.refCarClass;
   state.refTrack = track;
   state.refCarClass = carClass;
+  if (changed) {
+    // Troca de pista/classe: invalida refLap antiga imediatamente. Sem isso,
+    // reloadRef so substitui se a nova for mais rapida que a anterior — o
+    // que compara tempos de pistas diferentes e mantem a refLap errada.
+    state.refLap = null;
+    state.refBuckets = null;
+    resetCurrentLap();
+    sendRefSamples();
+  }
   await reloadRef("track/class change");
 }
 
@@ -314,21 +325,49 @@ function processFrame(frame) {
 
 // ── Janela ─────────────────────────────────────────────
 
+// Janela viva = existe, nao destruida, e webContents nao morreu (renderer
+// crash deixa o BrowserWindow vivo mas o conteudo morto — sem este check
+// applyVisibility/setEdit silenciosamente nao fazem nada).
+function isWindowAlive() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return false;
+  const wc = overlayWindow.webContents;
+  if (!wc || wc.isDestroyed?.() || wc.isCrashed?.()) return false;
+  return true;
+}
+
+// Recria a janela se nao estiver viva. Chamar antes de qualquer operacao
+// que precise mostrar/ativar o overlay.
+function ensureOverlayWindow() {
+  if (isWindowAlive()) return overlayWindow;
+  if (overlayWindow) {
+    try { overlayWindow.destroy(); } catch {}
+    overlayWindow = null;
+    state.visible = false;
+  }
+  return createOverlayWindow();
+}
+
 function applyVisibility() {
-  if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const shouldShow =
     !state.manuallyClosed && (state.editMode || state.inRealtime);
-  if (shouldShow && !state.visible) {
-    overlayWindow.showInactive();
-    state.visible = true;
-  } else if (!shouldShow && state.visible) {
-    overlayWindow.hide();
-    state.visible = false;
+  if (shouldShow) {
+    ensureOverlayWindow();
+    if (!isWindowAlive()) return;
+    if (!state.visible) {
+      overlayWindow.showInactive();
+      state.visible = true;
+    }
+  } else {
+    if (!isWindowAlive()) return;
+    if (state.visible) {
+      overlayWindow.hide();
+      state.visible = false;
+    }
   }
 }
 
 function applyClickThrough() {
-  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  if (!isWindowAlive()) return;
   if (state.editMode) {
     overlayWindow.setIgnoreMouseEvents(false);
   } else {
@@ -387,6 +426,23 @@ function createOverlayWindow() {
     state.visible = false;
   });
 
+  // Renderer crash (GPU/JS): a janela continua tecnicamente viva mas o
+  // conteudo morre. Sem este handler, a referencia fica zombie e o usuario
+  // nao consegue mais ligar o overlay sem reiniciar o app.
+  overlayWindow.webContents.on("render-process-gone", (_e, details) => {
+    pushLog(
+      `[OVERLAY] renderer morto (${details?.reason || "?"}). Recriando janela.`
+    );
+    try { overlayWindow?.destroy(); } catch {}
+    overlayWindow = null;
+    state.visible = false;
+    // So recria se algo deveria estar mostrando. Senao espera proximo evento.
+    if (!state.manuallyClosed && (state.editMode || state.inRealtime)) {
+      ensureOverlayWindow();
+      applyVisibility();
+    }
+  });
+
   applyClickThrough();
   return overlayWindow;
 }
@@ -394,10 +450,14 @@ function createOverlayWindow() {
 // ── API publica ────────────────────────────────────────
 
 function onLive(frame) {
-  if (frame.inRealtime !== state.inRealtime) {
-    state.inRealtime = frame.inRealtime;
+  const active = frame.inRealtime === true;
+  if (active !== state.inRealtime) {
+    state.inRealtime = active;
     applyVisibility();
   }
+  // Sem partida ativa (saiu do jogo ou da sessao): so atualiza visibilidade
+  // e sai. Nao processa frame, nao toca refLap.
+  if (!active) return;
   refreshRefIfNeeded(frame.track, frame.carClass);
 
   const payload = processFrame(frame);
@@ -440,10 +500,15 @@ async function setWidget(id, partial) {
 
 function setEditMode(bool) {
   state.editMode = !!bool;
+  // Garante janela viva ANTES de aplicar — se renderer crashou, o usuario
+  // clicando em "configurar" tem que recuperar o overlay.
+  if (state.editMode) ensureOverlayWindow();
   applyClickThrough();
   applyVisibility();
-  if (overlayWindow && !overlayWindow.isDestroyed()) {
-    overlayWindow.webContents.send("overlay-mode", { edit: state.editMode });
+  if (isWindowAlive()) {
+    try {
+      overlayWindow.webContents.send("overlay-mode", { edit: state.editMode });
+    } catch {}
   }
 }
 
@@ -471,7 +536,7 @@ function init({ prisma: p, log, getConfig, setConfig, mainWindowEnv }) {
   });
   ipcMain.handle("overlay.setEnabled", (_e, enabled) => {
     setManuallyClosed(!enabled);
-    if (enabled && !overlayWindow) createOverlayWindow();
+    if (enabled) ensureOverlayWindow();
     return !state.manuallyClosed;
   });
   ipcMain.handle("overlay.getState", () => ({

@@ -190,9 +190,18 @@ async function runTracker({
     const r1 = (n) => Math.round(n * 10) / 10;
     while (!shouldStop()) {
       await sleep(SAMPLE_MS);
-      if (!smHandle) continue;
-      const snap = sm.readSnapshot(smHandle);
-      if (!snap || !snap.player || !snap.telemetry) continue;
+      const snap = smHandle ? sm.readSnapshot(smHandle) : null;
+      if (!snap || !snap.player || !snap.telemetry) {
+        // Sem dados de jogador (jogo fechado, no menu, ou saiu da partida):
+        // notifica overlay com frame inativo pra ele esconder. Sem isso,
+        // o overlay fica preso visivel com a ultima telemetria na tela.
+        if (onLive) {
+          try {
+            onLive({ inRealtime: false });
+          } catch {}
+        }
+        continue;
+      }
       const player = snap.player;
       const playerTelem = snap.telemetry;
 
