@@ -11,6 +11,9 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [version, setVersion] = useState("");
+  const [autoStart, setAutoStart] = useState(false);
+  const [autoStartAvailable, setAutoStartAvailable] = useState(true);
+  const [autoStartBusy, setAutoStartBusy] = useState(false);
   const lmuConnected = useLmuStatus();
 
   useEffect(() => {
@@ -23,7 +26,26 @@ export default function Settings() {
       setOutlierPct(c.outlier_threshold_pct ?? 7);
     })();
     window.api?.getAppVersion?.().then((v) => setVersion(v || ""));
+    window.api?.getAutoStart?.().then((s) => {
+      if (!s) return;
+      setAutoStart(!!s.enabled);
+      setAutoStartAvailable(!!s.available);
+    });
   }, []);
+
+  const toggleAutoStart = async () => {
+    if (autoStartBusy || !autoStartAvailable) return;
+    setAutoStartBusy(true);
+    try {
+      const next = await window.api?.setAutoStart?.(!autoStart);
+      if (next) {
+        setAutoStart(!!next.enabled);
+        setAutoStartAvailable(!!next.available);
+      }
+    } finally {
+      setAutoStartBusy(false);
+    }
+  };
 
   const save = async () => {
     if (saving) return;
@@ -197,6 +219,52 @@ export default function Settings() {
                 </span>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Inicializacao */}
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            {sectionTitle("Inicialização")}
+          </div>
+          <div
+            style={{
+              padding: "var(--pad)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ fontSize: 13, color: "var(--tx-0)" }}>
+                Iniciar com o Windows
+              </span>
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  color: "var(--tx-3)",
+                }}
+              >
+                {autoStartAvailable
+                  ? "App sobe na tray ao ligar o PC. Tracker já fica pronto pra detectar o LMU."
+                  : "Disponível apenas na versão empacotada (não funciona em dev)."}
+              </span>
+            </div>
+            <button
+              type="button"
+              className={autoStart ? "btn solid" : "btn"}
+              disabled={autoStartBusy || !autoStartAvailable}
+              onClick={toggleAutoStart}
+              style={{
+                opacity: !autoStartAvailable || autoStartBusy ? 0.5 : 1,
+                minWidth: 90,
+              }}
+            >
+              {autoStartBusy ? "..." : autoStart ? "ATIVO" : "INATIVO"}
+            </button>
           </div>
         </div>
 

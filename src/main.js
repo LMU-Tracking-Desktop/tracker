@@ -658,6 +658,40 @@ ipcMain.handle("config.get", async () => ({ ...lastConfig }));
 
 ipcMain.handle("app.version", async () => app.getVersion());
 
+// Auto-start (Windows registry HKCU Run). Fonte de verdade e o estado do
+// SO via getLoginItemSettings — nao duplicamos no config.json. Passamos
+// --hidden pra app subir direto na tray no boot.
+ipcMain.handle("app.getAutoStart", async () => {
+  try {
+    const s = app.getLoginItemSettings();
+    return { enabled: !!s.openAtLogin, available: app.isPackaged };
+  } catch (e) {
+    pushLog(`[AUTOSTART ERRO] get: ${e.message}`);
+    return { enabled: false, available: false };
+  }
+});
+
+ipcMain.handle("app.setAutoStart", async (_e, enabled) => {
+  // Em dev (electron-forge start), setLoginItemSettings registraria o
+  // electron.exe do node_modules — inutil. So permite em build empacotada.
+  if (!app.isPackaged) {
+    pushLog(`[AUTOSTART] ignorado (dev mode)`);
+    return { enabled: false, available: false };
+  }
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      args: enabled ? ["--hidden"] : [],
+    });
+    pushLog(`[AUTOSTART] ${enabled ? "ativado" : "desativado"}`);
+    const s = app.getLoginItemSettings();
+    return { enabled: !!s.openAtLogin, available: true };
+  } catch (e) {
+    pushLog(`[AUTOSTART ERRO] set: ${e.message}`);
+    return { enabled: false, available: true };
+  }
+});
+
 ipcMain.handle("config.set", async (_e, partial) => {
   const configPath = path.join(app.getPath("userData"), "config.json");
   const next = { ...lastConfig, ...partial };
@@ -839,11 +873,16 @@ ipcMain.handle("stats.last7days", async () => {
 // ── Janela ──────────────────────────────────────────────
 
 const createWindow = () => {
+  // Auto-start passa --hidden: sobe na tray sem janela visivel.
+  // process.argv inclui o exe path no [0], entao verificamos todos.
+  const startHidden = process.argv.includes("--hidden");
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     backgroundColor: "#07070a",
     icon: resolveAssetPath("logo.png"),
+    show: !startHidden,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -852,7 +891,7 @@ const createWindow = () => {
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+    if (!startHidden) mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     mainWindow.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)

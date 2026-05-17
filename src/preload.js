@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("api", {
   getConfig: () => ipcRenderer.invoke("config.get"),
   setConfig: (partial) => ipcRenderer.invoke("config.set", partial),
   getAppVersion: () => ipcRenderer.invoke("app.version"),
+  getAutoStart: () => ipcRenderer.invoke("app.getAutoStart"),
+  setAutoStart: (enabled) => ipcRenderer.invoke("app.setAutoStart", enabled),
 
   // ── Overlay ─────────────────────────────────────────────
   // App principal (Sidebar + tela /overlays): controle e config.

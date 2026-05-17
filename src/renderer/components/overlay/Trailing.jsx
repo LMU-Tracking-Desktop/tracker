@@ -8,6 +8,7 @@ const HEIGHT = 90;
 const WINDOW_S = 10; // segundos visiveis no grafico
 const GREEN = "#3ecf65";
 const RED = "#e6403d";
+const YELLOW = "#ffd64a"; // ABS/TC ativos
 
 // Interpola th/br no array de ref samples (ordenados por d) na distancia d.
 function interpRef(samples, d, key) {
@@ -50,6 +51,8 @@ export default function Trailing({ tick, refSamples, showReference }) {
       t: now,
       throttle: tick.throttle ?? 0,
       brake: tick.brake ?? 0,
+      abs: tick.absActive ? 1 : 0,
+      tc: tick.tcActive ? 1 : 0,
       d: tick.lapDist ?? 0,
     });
     const cutoff = now - WINDOW_S;
@@ -81,6 +84,30 @@ export default function Trailing({ tick, refSamples, showReference }) {
           brake: interpRef(refSamples, p.d, "br") ?? 0,
         }))
       : null;
+
+  // Segmentos onde ABS/TC estavam ativos — agrupa pontos consecutivos
+  // pra desenhar uma faixa continua em vez de N retangulos.
+  function buildEventSegments(key) {
+    const segs = [];
+    let start = null;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i][key]) {
+        if (start === null) start = points[i].x;
+      } else if (start !== null) {
+        segs.push([start, points[i - 1]?.x ?? start]);
+        start = null;
+      }
+    }
+    if (start !== null) {
+      segs.push([start, points[points.length - 1].x]);
+    }
+    return segs;
+  }
+  const absSegs = buildEventSegments("abs");
+  const tcSegs = buildEventSegments("tc");
+
+  const currentABS = !!tick?.absActive;
+  const currentTC = !!tick?.tcActive;
 
   return (
     <div
@@ -149,6 +176,33 @@ export default function Trailing({ tick, refSamples, showReference }) {
             />
           </>
         )}
+
+        {/* Faixa TC no topo (acima do throttle), faixa ABS na base (abaixo
+            do brake). Marca onde os aids estavam intervindo. */}
+        {tcSegs.map(([x0, x1], i) => (
+          <line
+            key={`tc-${i}`}
+            x1={x0}
+            x2={x1}
+            y1={2}
+            y2={2}
+            stroke={YELLOW}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+        ))}
+        {absSegs.map(([x0, x1], i) => (
+          <line
+            key={`abs-${i}`}
+            x1={x0}
+            x2={x1}
+            y1={HEIGHT - 2}
+            y2={HEIGHT - 2}
+            stroke={YELLOW}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+        ))}
       </svg>
       <div
         style={{
@@ -158,9 +212,31 @@ export default function Trailing({ tick, refSamples, showReference }) {
           marginTop: 2,
           textAlign: "center",
           textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
         }}
       >
-        {WINDOW_S}s {showReference && refSamples ? "· REF" : ""}
+        <span
+          style={{
+            color: currentTC ? YELLOW : "rgba(255,255,255,0.25)",
+            fontWeight: currentTC ? 700 : 400,
+          }}
+        >
+          TC
+        </span>
+        <span>
+          {WINDOW_S}s{showReference && refSamples ? " · REF" : ""}
+        </span>
+        <span
+          style={{
+            color: currentABS ? YELLOW : "rgba(255,255,255,0.25)",
+            fontWeight: currentABS ? 700 : 400,
+          }}
+        >
+          ABS
+        </span>
       </div>
     </div>
   );

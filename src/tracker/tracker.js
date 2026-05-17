@@ -239,6 +239,20 @@ async function runTracker({
       // (mTimeIntoLap do rF2 e estimativa baseada em posicao, nao serve pra delta.)
       const tReal = snap.scoring.mCurrentET - (player.mLapStartET ?? 0);
 
+      // ABS/TC ativos: o LMU nao expoe flag, mas mFilteredBrake/Throttle
+      // sao os valores DEPOIS dos aids aplicarem. Se o driver pressionou
+      // mais que o carro aplicou, o aid esta cortando o input.
+      // Threshold 0.05 evita falso positivo por ruido de filtro/quantizacao.
+      const ABS_TOL = 0.05;
+      const TC_TOL = 0.05;
+      const absActive =
+        playerTelem.mUnfilteredBrake > 0.05 &&
+        playerTelem.mUnfilteredBrake - playerTelem.mFilteredBrake > ABS_TOL;
+      const tcActive =
+        playerTelem.mUnfilteredThrottle > 0.05 &&
+        playerTelem.mUnfilteredThrottle - playerTelem.mFilteredThrottle >
+          TC_TOL;
+
       currentSamples.push({
         d: r1(player.mLapDist),
         t: r3(tReal > 0 ? tReal : 0),
@@ -250,6 +264,8 @@ async function runTracker({
         v: r1(speed),
         x: r1(playerTelem.mPos.x),
         z: r1(playerTelem.mPos.z),
+        abs: absActive ? 1 : 0,
+        tc: tcActive ? 1 : 0,
       });
 
       // Emit live frame pra overlays. Inclui contexto que main precisa pra
@@ -281,6 +297,8 @@ async function runTracker({
               wheels[2]?.mWear ?? 0,
               wheels[3]?.mWear ?? 0,
             ],
+            absActive,
+            tcActive,
           });
         } catch (e) {
           // Nao deixa erro de overlay matar sampler

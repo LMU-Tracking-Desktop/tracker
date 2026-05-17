@@ -310,6 +310,8 @@ function processFrame(frame) {
     inRealtime: frame.inRealtime,
     sessionType: normSession(frame.sessionType),
     tireWear: frame.tireWear || [0, 0, 0, 0],
+    absActive: !!frame.absActive,
+    tcActive: !!frame.tcActive,
     delta: cumulativeDelta,
     microDelta,
     buckets: state.refBuckets ? state.bucketDeltas.slice() : null,

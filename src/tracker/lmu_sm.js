@@ -116,6 +116,9 @@ const TI = {
   mUnfilteredThrottle: 388, // double
   mUnfilteredBrake: 396, // double
   mUnfilteredSteering: 404, // double
+  // mUnfilteredClutch 412
+  mFilteredThrottle: 420, // double — apos TC/rev limiter
+  mFilteredBrake: 428, // double — apos ABS
   mFuel: 524, // double
   mLastImpactET: 552, // double (align 4 apos mDentSeverity[8])
   mFuelCapacity: 608, // double (align 4 apos uchars)
@@ -214,6 +217,8 @@ function decodeTelemInfo(buf, idx) {
     mUnfilteredThrottle: readDouble(buf, base, TI.mUnfilteredThrottle),
     mUnfilteredBrake: readDouble(buf, base, TI.mUnfilteredBrake),
     mUnfilteredSteering: readDouble(buf, base, TI.mUnfilteredSteering),
+    mFilteredThrottle: readDouble(buf, base, TI.mFilteredThrottle),
+    mFilteredBrake: readDouble(buf, base, TI.mFilteredBrake),
     mFuel: readDouble(buf, base, TI.mFuel),
     mFuelCapacity: readDouble(buf, base, TI.mFuelCapacity),
     mLastImpactET: readDouble(buf, base, TI.mLastImpactET),
