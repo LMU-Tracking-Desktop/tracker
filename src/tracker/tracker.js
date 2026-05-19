@@ -518,7 +518,13 @@ async function runTracker({
             fuelCapacity: round(fuelCapacity, 3),
             energyUsed: null,
             tyreWearAvg: tyreWearAvg > 0 ? round(tyreWearAvg, 6) : null,
-            position: isRace ? player.mPlace : null,
+            // Posicao na classe (1-based). Em corridas single-class
+            // equivale ao mPlace; em multiclass mostra o numero que o
+            // driver realmente espera ver. Calculado lazy aqui (1x por
+            // volta) pra nao iterar veiculos a 30Hz.
+            position: isRace
+              ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
+              : null,
             hasTouch,
             telemetryJson,
           };
@@ -536,7 +542,13 @@ async function runTracker({
             fuelCapacity: round(fuelCapacity, 3),
             energyUsed: null,
             tyreWearAvg: tyreWearAvg > 0 ? round(tyreWearAvg, 6) : null,
-            position: isRace ? player.mPlace : null,
+            // Posicao na classe (1-based). Em corridas single-class
+            // equivale ao mPlace; em multiclass mostra o numero que o
+            // driver realmente espera ver. Calculado lazy aqui (1x por
+            // volta) pra nao iterar veiculos a 30Hz.
+            position: isRace
+              ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
+              : null,
             hasTouch,
             telemetryJson,
           };

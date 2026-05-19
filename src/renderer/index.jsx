@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import App from "./App.jsx";
 import ConfirmProvider from "./components/ConfirmProvider.jsx";
 import Home from "./routes/Home.jsx";
+import Pistas from "./routes/Pistas.jsx";
 import Logs from "./routes/Logs.jsx";
 import Sessoes from "./routes/Sessoes.jsx";
 import SessionDetail from "./routes/SessionDetail.jsx";
@@ -27,6 +28,7 @@ createRoot(document.getElementById("root")).render(
         <Route path="/overlay" element={<Overlay />} />
         <Route element={<App />}>
           <Route index element={<Home />} />
+          <Route path="/pistas" element={<Pistas />} />
           <Route path="/listagem" element={<Listagem />} />
           <Route path="/sessoes" element={<Sessoes />} />
           <Route path="/sessoes/:sessionId" element={<SessionDetail />} />

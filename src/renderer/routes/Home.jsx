@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import LapsTable from "../components/LapsTable.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import TrackSelect from "../components/TrackSelect.jsx";
@@ -100,6 +101,58 @@ function StatCard({ label, value, hint, accent, crit }) {
   );
 }
 
+function MiniStat({ label, value, hint, color, borderRight, borderBottom }) {
+  return (
+    <div
+      style={{
+        padding: "var(--pad)",
+        borderRight: borderRight ? "1px solid var(--bd-0)" : undefined,
+        borderBottom: borderBottom ? "1px solid var(--bd-0)" : undefined,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        gap: 4,
+        background: "var(--bg-1)",
+      }}
+    >
+      <span
+        className="mono"
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.16em",
+          color: "var(--tx-3)",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="mono"
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: color || "var(--tx-0)",
+          letterSpacing: "-0.01em",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </span>
+      {hint && (
+        <span
+          className="mono"
+          style={{
+            fontSize: 8,
+            letterSpacing: "0.14em",
+            color: "var(--tx-3)",
+          }}
+        >
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ClassPill({ cls }) {
   if (!cls) return null;
   return (
@@ -120,10 +173,12 @@ function ClassPill({ cls }) {
 }
 
 export default function Home() {
+  const location = useLocation();
+  const navTrackId = location.state?.trackId ?? null;
   const [stats7d, setStats7d] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [cars, setCars] = useState([]);
-  const [trackId, setTrackId] = useState(null);
+  const [trackId, setTrackId] = useState(navTrackId);
   const [data, setData] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
 
@@ -140,12 +195,19 @@ export default function Home() {
       setTracks(t || []);
       setCars(c || []);
       setStats7d(s7);
-      if (lastTrack) setTrackId(lastTrack);
+      // Se navegou de /pistas com state.trackId, respeita; senao usa o
+      // ultimo dirigido.
+      if (!navTrackId && lastTrack) setTrackId(lastTrack);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [navTrackId]);
+
+  // Quando muda navTrackId (ex: voltou de /pistas com outra pista), atualiza
+  useEffect(() => {
+    if (navTrackId) setTrackId(navTrackId);
+  }, [navTrackId]);
 
   useEffect(() => {
     if (!trackId) {
@@ -391,16 +453,18 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Stats grid */}
+            {/* Stats grid: MELHOR VOLTA no topo (full width), 2x2 abaixo */}
             <div
               style={{
                 display: "grid",
-                gridTemplateRows: "1fr 1fr 1fr",
+                gridTemplateRows: "auto 1fr 1fr",
+                gridTemplateColumns: "1fr 1fr",
                 border: "1px solid var(--bd-0)",
               }}
             >
               <div
                 style={{
+                  gridColumn: "1 / -1",
                   padding: "var(--pad)",
                   borderBottom: "1px solid var(--bd-0)",
                   display: "flex",
@@ -435,73 +499,41 @@ export default function Home() {
                     : "—:—.—"}
                 </span>
               </div>
-              <div
-                style={{
-                  padding: "var(--pad)",
-                  borderBottom: "1px solid var(--bd-0)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  gap: 6,
-                  background: "var(--bg-1)",
-                }}
-              >
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 9,
-                    letterSpacing: "0.18em",
-                    color: "var(--tx-3)",
-                  }}
-                >
-                  VOLTAS TOTAIS
-                </span>
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: "var(--tx-0)",
-                    letterSpacing: "-0.01em",
-                    lineHeight: 1,
-                  }}
-                >
-                  {String(data.stats.totalLaps).padStart(3, "0")}
-                </span>
-              </div>
-              <div
-                style={{
-                  padding: "var(--pad)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  gap: 6,
-                  background: "var(--bg-1)",
-                }}
-              >
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 9,
-                    letterSpacing: "0.18em",
-                    color: "var(--tx-3)",
-                  }}
-                >
-                  SESSÕES
-                </span>
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 600,
-                    color: "var(--tx-0)",
-                    letterSpacing: "-0.01em",
-                    lineHeight: 1,
-                  }}
-                >
-                  {String(data.stats.sessions).padStart(2, "0")}
-                </span>
-              </div>
+              <MiniStat
+                label="VOLTAS"
+                value={String(data.stats.totalLaps).padStart(3, "0")}
+                borderRight
+                borderBottom
+              />
+              <MiniStat
+                label="SESSÕES"
+                value={String(data.stats.sessions).padStart(2, "0")}
+                borderBottom
+              />
+              <MiniStat
+                label="MELHOR POSIÇÃO"
+                value={fmtPos(data.stats.bestPosition)}
+                color={
+                  data.stats.bestPosition != null && data.stats.bestPosition <= 3
+                    ? "var(--accent)"
+                    : undefined
+                }
+                hint={
+                  data.stats.racesCount > 0
+                    ? `${data.stats.racesCount} ${data.stats.racesCount === 1 ? "CORRIDA" : "CORRIDAS"}`
+                    : "NA CLASSE"
+                }
+                borderRight
+              />
+              <MiniStat
+                label="POSIÇÃO MÉDIA"
+                value={
+                  data.stats.avgPosition != null
+                    ? `P${data.stats.avgPosition.toFixed(1)}`
+                    : "—"
+                }
+                hint="FINAL · CORRIDAS"
+              />
             </div>
           </div>
 

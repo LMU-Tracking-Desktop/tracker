@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("api", {
   },
   getStats7d: () => ipcRenderer.invoke("stats.last7days"),
   listTracks: () => ipcRenderer.invoke("tracks.list"),
+  listTracksSummary: () => ipcRenderer.invoke("tracks.summary"),
   listCars: () => ipcRenderer.invoke("cars.list"),
   getLastTrack: () => ipcRenderer.invoke("home.lastTrack"),
   getHomeData: (trackId) => ipcRenderer.invoke("home.data", trackId),

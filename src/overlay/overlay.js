@@ -551,7 +551,13 @@ function init({ prisma: p, log, getConfig, setConfig, mainWindowEnv }) {
     refOwner: state.refLap?.owner ?? null,
   }));
 
-  createOverlayWindow();
+  // NAO cria a overlay window aqui. Quando o app sobe via auto-start no boot
+  // do Windows, o DWM/compositor as vezes ainda nao esta pronto pra janelas
+  // transparentes always-on-top — a janela e criada mas vira zombie (existe
+  // mas nunca aparece, mesmo apos LMU iniciar). Criamos lazy via
+  // ensureOverlayWindow() quando algo realmente precisa mostrar (primeiro
+  // frame com inRealtime, toggle ATIVO, ou edit mode). Nessa hora o Windows
+  // ja terminou de bootar.
 }
 
 function shutdown() {

@@ -199,6 +199,23 @@ function decodeVehicleScoring(buf, idx) {
   };
 }
 
+// Conta quantos veiculos da MESMA classe do player estao a frente (mPlace
+// menor). Retorna posicao 1-based dentro da classe. Necessario porque
+// mPlace e overall (todas as classes juntas) e em multiclass isso da
+// numeros enganosos pro driver.
+function computeClassPlace(buf, numVehicles, playerClass, playerPlace) {
+  if (!playerClass) return playerPlace;
+  let aheadInClass = 0;
+  for (let i = 0; i < numVehicles; i++) {
+    const base = VEH_SCORING_OFFSET + VEH_SCORING_SIZE * i;
+    const cls = readCStr(buf, base, VSI.mVehicleClass, 32);
+    if (cls !== playerClass) continue;
+    const place = readUInt8(buf, base, VSI.mPlace);
+    if (place > 0 && place < playerPlace) aheadInClass++;
+  }
+  return aheadInClass + 1;
+}
+
 function decodeTelemInfo(buf, idx) {
   const base = TELEM_INFO_BASE_OFFSET + TELEM_INFO_SIZE * idx;
   const wheelBase = base + TI.mWheelArrayBase;
@@ -280,4 +297,16 @@ function readSnapshot(h) {
   return { scoring, player, telemetry };
 }
 
-module.exports = { open, close, readSnapshot, LAYOUT_SIZE };
+// Snapshot fresco so pra calcular posicao na classe. Chamado pelo tracker
+// no momento de salvar uma volta — uma vez por volta, nao a cada frame.
+// Faz seu proprio RtlCopyMemory pra nao depender do estado do readSnapshot.
+function readClassPlace(h, playerClass, playerPlace) {
+  if (!h || !playerClass) return playerPlace ?? null;
+  RtlCopyMemory(h.buf, h.view, LAYOUT_SIZE);
+  const buf = h.buf;
+  const numVehicles = readLong(buf, SCORING_INFO_OFFSET, SI.mNumVehicles);
+  if (numVehicles <= 0 || numVehicles > VEH_COUNT) return playerPlace ?? null;
+  return computeClassPlace(buf, numVehicles, playerClass, playerPlace);
+}
+
+module.exports = { open, close, readSnapshot, readClassPlace, LAYOUT_SIZE };

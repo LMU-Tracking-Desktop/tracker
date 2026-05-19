@@ -3,6 +3,7 @@ import { useLmuStatus } from "../lib/useLmuStatus.js";
 
 const ITEMS = [
   { to: "/", label: "HOME", end: true },
+  { to: "/pistas", label: "PISTAS" },
   { to: "/listagem", label: "LISTAGEM" },
   { to: "/sessoes", label: "SESSOES" },
   { to: "/dashboard", label: "DASHBOARD" },

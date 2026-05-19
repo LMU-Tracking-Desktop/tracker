@@ -11,6 +11,7 @@ const {
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const { execFile } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const { startTracker } = require("./tracker/tracker.js");
 const { createPrisma } = require("./db/client.js");
@@ -144,6 +145,99 @@ ipcMain.handle("tracks.list", async () => {
 ipcMain.handle("cars.list", async () => {
   if (!prisma) return [];
   return prisma.car.findMany({ select: { name: true, imageUrl: true } });
+});
+
+// Resumo por pista pra tela /pistas — uma linha por pista com agregados.
+// Para evitar N+1, puxa sessions + laps uma vez e agrega em memoria. Como
+// e um app pessoal com ate ~30 pistas e poucos milhares de voltas, e
+// barato.
+ipcMain.handle("tracks.summary", async () => {
+  if (!prisma) return [];
+  try {
+    const [tracks, sessions, laps] = await Promise.all([
+      prisma.track.findMany(),
+      prisma.session.findMany({
+        select: { id: true, trackId: true, type: true, startedAt: true },
+      }),
+      prisma.lap.findMany({
+        select: {
+          sessionId: true,
+          lapNumber: true,
+          lapTime: true,
+          isValid: true,
+          position: true,
+        },
+      }),
+    ]);
+
+    const sessionsByTrack = new Map();
+    const sessionTypeById = new Map();
+    for (const s of sessions) {
+      if (!sessionsByTrack.has(s.trackId)) sessionsByTrack.set(s.trackId, []);
+      sessionsByTrack.get(s.trackId).push(s);
+      sessionTypeById.set(s.id, s.type);
+    }
+    const lapsBySessionId = new Map();
+    for (const l of laps) {
+      if (!lapsBySessionId.has(l.sessionId))
+        lapsBySessionId.set(l.sessionId, []);
+      lapsBySessionId.get(l.sessionId).push(l);
+    }
+
+    const out = tracks.map((t) => {
+      const ts = sessionsByTrack.get(t.id) || [];
+      let totalLaps = 0;
+      let bestLap = null;
+      let bestPosition = null;
+      let lastDriven = null;
+      const finalPositions = [];
+
+      for (const s of ts) {
+        if (!lastDriven || s.startedAt > lastDriven) lastDriven = s.startedAt;
+        const sl = lapsBySessionId.get(s.id) || [];
+        totalLaps += sl.length;
+        const isRace = s.type === "race";
+        let raceFinalPos = null;
+        let raceFinalLap = -1;
+        for (const l of sl) {
+          if (l.isValid && (bestLap == null || l.lapTime < bestLap))
+            bestLap = l.lapTime;
+          if (isRace && l.position != null) {
+            if (bestPosition == null || l.position < bestPosition)
+              bestPosition = l.position;
+            if (l.lapNumber > raceFinalLap) {
+              raceFinalLap = l.lapNumber;
+              raceFinalPos = l.position;
+            }
+          }
+        }
+        if (raceFinalPos != null) finalPositions.push(raceFinalPos);
+      }
+
+      const avgPosition =
+        finalPositions.length > 0
+          ? finalPositions.reduce((a, b) => a + b, 0) / finalPositions.length
+          : null;
+
+      return {
+        id: t.id,
+        name: t.name,
+        imageUrl: t.imageUrl,
+        sessions: ts.length,
+        totalLaps,
+        bestLap,
+        bestPosition,
+        avgPosition,
+        racesCount: finalPositions.length,
+        lastDriven: lastDriven ? lastDriven.toISOString() : null,
+      };
+    });
+
+    return out;
+  } catch (e) {
+    pushLog(`[IPC ERRO] tracks.summary: ${e.message}`);
+    return [];
+  }
 });
 
 ipcMain.handle("home.lastTrack", async () => {
@@ -629,6 +723,30 @@ ipcMain.handle("home.data", async (_e, trackId) => {
     select: { sessionId: true },
   });
 
+  // Melhor posicao na pista = minima posicao registrada em qualquer volta de
+  // corrida. Posicao media = media das posicoes FINAIS (ultima volta de cada
+  // sessao de corrida), nao da posicao a cada volta — uma volta = uma
+  // amostra inflaria sessoes longas.
+  const raceLapsWithPos = await prisma.lap.findMany({
+    where: {
+      position: { not: null },
+      session: { trackId, type: "race" },
+    },
+    select: { position: true, lapNumber: true, sessionId: true },
+    orderBy: { lapNumber: "desc" },
+  });
+  let bestPosition = null;
+  const finalBySession = new Map();
+  for (const l of raceLapsWithPos) {
+    if (bestPosition == null || l.position < bestPosition) bestPosition = l.position;
+    if (!finalBySession.has(l.sessionId)) finalBySession.set(l.sessionId, l.position);
+  }
+  const finals = Array.from(finalBySession.values());
+  const avgPosition =
+    finals.length > 0
+      ? finals.reduce((a, b) => a + b, 0) / finals.length
+      : null;
+
   return {
     track,
     stats: {
@@ -636,6 +754,9 @@ ipcMain.handle("home.data", async (_e, trackId) => {
       bestLapId: validLaps[0]?.id ?? null,
       totalLaps: aggregate.length,
       sessions: new Set(aggregate.map((l) => l.sessionId)).size,
+      bestPosition,
+      avgPosition,
+      racesCount: finals.length,
     },
     topByClass: topByClass.map(([cls, laps]) => ({ carClass: cls, laps })),
   };
@@ -659,12 +780,52 @@ ipcMain.handle("config.get", async () => ({ ...lastConfig }));
 ipcMain.handle("app.version", async () => app.getVersion());
 
 // Auto-start (Windows registry HKCU Run). Fonte de verdade e o estado do
-// SO via getLoginItemSettings — nao duplicamos no config.json. Passamos
-// --hidden pra app subir direto na tray no boot.
+// SO — nao duplicamos no config.json. Em vez de confiar so em
+// setLoginItemSettings (que com Squirrel as vezes deixa a entrada "presa"
+// ao desativar), tambem lemos/escrevemos o registry diretamente como
+// fallback. Passamos --hidden pra app subir direto na tray no boot.
+const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const RUN_VALUE_NAME = "lmu-desktop";
+
+function runRegQuery() {
+  // Le a entrada do app no Run. Retorna a string completa do comando
+  // (path + args) ou null se nao existir.
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") return resolve(null);
+    execFile(
+      "reg",
+      ["query", RUN_KEY, "/v", RUN_VALUE_NAME],
+      { windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        const m = stdout.match(/REG_SZ\s+(.+)/);
+        resolve(m ? m[1].trim() : null);
+      }
+    );
+  });
+}
+
+function runRegDelete() {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") return resolve(false);
+    execFile(
+      "reg",
+      ["delete", RUN_KEY, "/v", RUN_VALUE_NAME, "/f"],
+      { windowsHide: true },
+      (err) => resolve(!err)
+    );
+  });
+}
+
 ipcMain.handle("app.getAutoStart", async () => {
   try {
     const s = app.getLoginItemSettings();
-    return { enabled: !!s.openAtLogin, available: app.isPackaged };
+    // Leitura cruzada: Electron pode reportar false enquanto a entrada
+    // do Squirrel ainda existe no registry. Considera ativo se qualquer
+    // um detectar.
+    const regEntry = await runRegQuery();
+    const enabled = !!s.openAtLogin || !!regEntry;
+    return { enabled, available: app.isPackaged };
   } catch (e) {
     pushLog(`[AUTOSTART ERRO] get: ${e.message}`);
     return { enabled: false, available: false };
@@ -683,9 +844,21 @@ ipcMain.handle("app.setAutoStart", async (_e, enabled) => {
       openAtLogin: !!enabled,
       args: enabled ? ["--hidden"] : [],
     });
-    pushLog(`[AUTOSTART] ${enabled ? "ativado" : "desativado"}`);
+    // Fallback: ao desativar, forca delete da chave no registry. Com
+    // Squirrel, setLoginItemSettings(openAtLogin:false) as vezes nao
+    // remove a entrada gerenciada pelo Update.exe.
+    if (!enabled) {
+      const ok = await runRegDelete();
+      pushLog(`[AUTOSTART] reg delete: ${ok ? "ok" : "falhou (nao existia?)"}`);
+    }
+    // Re-le estado real ao final
     const s = app.getLoginItemSettings();
-    return { enabled: !!s.openAtLogin, available: true };
+    const regEntry = await runRegQuery();
+    const finalEnabled = !!s.openAtLogin || !!regEntry;
+    pushLog(
+      `[AUTOSTART] ${enabled ? "ativar" : "desativar"} → estado final: ${finalEnabled ? "ATIVO" : "INATIVO"} (electron=${s.openAtLogin}, reg=${!!regEntry})`
+    );
+    return { enabled: finalEnabled, available: true };
   } catch (e) {
     pushLog(`[AUTOSTART ERRO] set: ${e.message}`);
     return { enabled: false, available: true };
