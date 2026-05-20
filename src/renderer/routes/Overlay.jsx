@@ -266,7 +266,11 @@ export default function Overlay() {
 
       {visibleIds.has("tires") && (
         <Widget id="tires" pos={positions.tires} scale={widgets.tires?.scale} edit={edit} onMove={moveWidget}>
-          <Tires tireWear={tick?.tireWear} />
+          <Tires
+            tireWear={tick?.tireWear}
+            tireTemp={tick?.tireTemp}
+            mode={widgets.tires?.showTemp ? "temp" : "wear"}
+          />
         </Widget>
       )}
     </div>

@@ -44,7 +44,7 @@ function defaultWidget(id) {
     case "trailing":
       return { ...base, x: 0.5, y: 0.78, showReference: true };
     case "tires":
-      return { ...base, x: 0.88, y: 0.72 };
+      return { ...base, x: 0.88, y: 0.72, showTemp: false };
     default:
       return base;
   }
@@ -310,6 +310,7 @@ function processFrame(frame) {
     inRealtime: frame.inRealtime,
     sessionType: normSession(frame.sessionType),
     tireWear: frame.tireWear || [0, 0, 0, 0],
+    tireTemp: frame.tireTemp || [0, 0, 0, 0],
     absActive: !!frame.absActive,
     tcActive: !!frame.tcActive,
     delta: cumulativeDelta,

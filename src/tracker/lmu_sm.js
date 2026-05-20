@@ -125,9 +125,10 @@ const TI = {
   mWheelArrayBase: 848, // TelemWheelV01[4] apos mExpansion[20]
 };
 
-// TelemWheelV01 — so mWear.
+// TelemWheelV01 — mWear + mTemperature.
 const TW = {
-  mWear: 152, // double (apos 19 doubles + char[16] = 152)
+  mTemperature: 128, // double[3] Kelvin — left/center/right
+  mWear: 152, // double (apos 19 doubles)
 };
 
 // ── Helpers ────────────────────────────────────────────
@@ -219,12 +220,19 @@ function computeClassPlace(buf, numVehicles, playerClass, playerPlace) {
 function decodeTelemInfo(buf, idx) {
   const base = TELEM_INFO_BASE_OFFSET + TELEM_INFO_SIZE * idx;
   const wheelBase = base + TI.mWheelArrayBase;
-  const mWheels = [
-    { mWear: buf.readDoubleLE(wheelBase + 0 * TELEM_WHEEL_SIZE + TW.mWear) },
-    { mWear: buf.readDoubleLE(wheelBase + 1 * TELEM_WHEEL_SIZE + TW.mWear) },
-    { mWear: buf.readDoubleLE(wheelBase + 2 * TELEM_WHEEL_SIZE + TW.mWear) },
-    { mWear: buf.readDoubleLE(wheelBase + 3 * TELEM_WHEEL_SIZE + TW.mWear) },
-  ];
+  const mWheels = [0, 1, 2, 3].map((wi) => {
+    const wb = wheelBase + wi * TELEM_WHEEL_SIZE;
+    // mTemperature[3] = left/center/right em Kelvin. Media convertida pra
+    // Celsius. Valores 0 = sem dado (carro nao carregado), mantemos 0.
+    const t0 = buf.readDoubleLE(wb + TW.mTemperature);
+    const t1 = buf.readDoubleLE(wb + TW.mTemperature + 8);
+    const t2 = buf.readDoubleLE(wb + TW.mTemperature + 16);
+    const avgK = (t0 + t1 + t2) / 3;
+    return {
+      mWear: buf.readDoubleLE(wb + TW.mWear),
+      mTempC: avgK > 100 ? avgK - 273.15 : 0,
+    };
+  });
   return {
     mID: readLong(buf, base, TI.mID),
     mPos: readVect3(buf, base, TI.mPos),

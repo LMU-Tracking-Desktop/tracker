@@ -31,7 +31,8 @@ const WIDGETS = [
   {
     id: "tires",
     name: "Status dos pneus",
-    desc: "Desgaste das 4 rodas (verde / amarelo / vermelho)",
+    desc: "Desgaste + temperatura das 4 rodas juntos. O toggle decide qual fica em destaque",
+    extras: ["showTemp"],
   },
 ];
 
@@ -240,6 +241,26 @@ function WidgetCard({ widget, def, onUpdate }) {
                 checked={widget?.showReference !== false}
                 onChange={(v) => update({ showReference: v })}
                 label="MOSTRAR DADOS DA MELHOR VOLTA NO FUNDO"
+              />
+            </div>
+          )}
+
+          {def.extras?.includes("showTemp") && (
+            <div
+              style={{
+                marginTop: 4,
+                paddingTop: 10,
+                borderTop: "1px solid var(--bd-0)",
+              }}
+            >
+              <Toggle
+                checked={!!widget?.showTemp}
+                onChange={(v) => update({ showTemp: v })}
+                label={
+                  widget?.showTemp
+                    ? "DESTAQUE: TEMPERATURA (desgaste como sub-info)"
+                    : "DESTAQUE: DESGASTE (temperatura como sub-info)"
+                }
               />
             </div>
           )}

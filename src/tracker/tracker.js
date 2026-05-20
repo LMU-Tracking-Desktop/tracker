@@ -297,6 +297,13 @@ async function runTracker({
               wheels[2]?.mWear ?? 0,
               wheels[3]?.mWear ?? 0,
             ],
+            // Temperatura media por pneu em Celsius. Mesma ordem.
+            tireTemp: [
+              wheels[0]?.mTempC ?? 0,
+              wheels[1]?.mTempC ?? 0,
+              wheels[2]?.mTempC ?? 0,
+              wheels[3]?.mTempC ?? 0,
+            ],
             absActive,
             tcActive,
           });

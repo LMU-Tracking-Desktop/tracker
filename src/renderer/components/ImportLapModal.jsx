@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Modal from "./Modal.jsx";
 import { Field } from "./Field.jsx";
 
@@ -7,6 +7,7 @@ export default function ImportLapModal({ open, onClose, onImported }) {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef(null);
 
   const tryParse = (s) => {
     setError(null);
@@ -43,6 +44,20 @@ export default function ImportLapModal({ open, onClose, onImported }) {
     }
   };
 
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo depois
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const s = String(reader.result || "");
+      setText(s);
+      tryParse(s);
+    };
+    reader.onerror = () => setError("erro ao ler o arquivo");
+    reader.readAsText(file);
+  };
+
   const handleImport = async () => {
     if (!preview || saving) return;
     setSaving(true);
@@ -71,7 +86,7 @@ export default function ImportLapModal({ open, onClose, onImported }) {
       open={open}
       onClose={onClose}
       title="Importar Volta"
-      subtitle="Cole o JSON exportado por um amigo"
+      subtitle="Cole o JSON ou envie o arquivo exportado por um amigo"
       width={640}
       footer={
         <>
@@ -102,6 +117,13 @@ export default function ImportLapModal({ open, onClose, onImported }) {
           <button type="button" className="btn" onClick={handlePaste}>
             COLAR DO CLIPBOARD
           </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            ENVIAR ARQUIVO
+          </button>
           <span
             className="mono"
             style={{
@@ -113,6 +135,13 @@ export default function ImportLapModal({ open, onClose, onImported }) {
           >
             ou cola no campo abaixo
           </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.txt,application/json,text/plain"
+            onChange={handleFile}
+            style={{ display: "none" }}
+          />
         </div>
 
         <Field label="JSON da volta">
