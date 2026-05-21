@@ -1,6 +1,16 @@
 import { useMemo, useState } from "react";
 import Modal from "./Modal.jsx";
 import SegmentMiniMap from "./SegmentMiniMap.jsx";
+import { coachLap } from "../lib/coach.js";
+
+const KIND_COLOR = {
+  brake: "var(--brake)",
+  speed: "var(--speed)",
+  throttle: "var(--throttle)",
+  grip: "var(--warn)",
+  line: "var(--steer)",
+  ok: "var(--ok)",
+};
 
 const TYPE_COLOR = {
   braking: "var(--brake)",
@@ -179,6 +189,33 @@ function SegmentCard({ seg, telemetry, onClick }) {
             </span>
           </span>
         </div>
+        {seg.tips?.[0] && (
+          <div
+            style={{
+              marginTop: 2,
+              paddingTop: 8,
+              borderTop: "1px solid var(--bd-0)",
+              display: "flex",
+              gap: 7,
+            }}
+          >
+            <span
+              style={{
+                flex: "0 0 3px",
+                background: KIND_COLOR[seg.tips[0].kind] || "var(--bd-2)",
+              }}
+            />
+            <span
+              style={{
+                fontSize: 10.5,
+                lineHeight: 1.45,
+                color: "var(--tx-1)",
+              }}
+            >
+              {seg.tips[0].text}
+            </span>
+          </div>
+        )}
       </div>
     </button>
   );
@@ -195,12 +232,17 @@ export default function SegmentAnalysisModal({
   const [sortMode, setSortMode] = useState("loss");
   const [typeFilter, setTypeFilter] = useState("all");
 
+  const coached = useMemo(
+    () => coachLap(deltas, telemetry, referenceTelemetry).segments,
+    [deltas, telemetry, referenceTelemetry]
+  );
+
   const rows = useMemo(() => {
-    let r = deltas.filter((d) => d.delta != null);
+    let r = coached.filter((d) => d.delta != null);
     if (typeFilter !== "all") r = r.filter((d) => d.type === typeFilter);
     if (sortMode === "track") return [...r].sort((a, b) => a.from - b.from);
     return [...r].sort((a, b) => b.delta - a.delta);
-  }, [deltas, sortMode, typeFilter]);
+  }, [coached, sortMode, typeFilter]);
 
   const totals = useMemo(() => {
     const sum = { braking: 0, exit: 0, straight: 0, all: 0 };

@@ -14,6 +14,7 @@ import BestInRangePanel from "../components/BestInRangePanel.jsx";
 import LapPickerModal from "../components/LapPickerModal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SegmentAnalysisModal from "../components/SegmentAnalysisModal.jsx";
+import CoachPanel from "../components/CoachPanel.jsx";
 import {
   downsample,
   distanceAtTime,
@@ -781,6 +782,13 @@ export default function Telemetria() {
                 sectorMarkers={sectorMarkers}
               />
             </SidePanel>
+
+            <CoachPanel
+              deltas={segmentDelta}
+              telemetry={telemetry}
+              referenceTelemetry={referenceTelemetry}
+              onSegmentSelect={(seg) => setZoomRange([seg.from, seg.to])}
+            />
 
             {selectedLap && (
               <SidePanel
