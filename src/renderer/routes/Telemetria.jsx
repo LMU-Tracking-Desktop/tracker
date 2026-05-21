@@ -784,9 +784,12 @@ export default function Telemetria() {
             </SidePanel>
 
             <CoachPanel
-              deltas={segmentDelta}
-              telemetry={telemetry}
+              segments={segments}
               referenceTelemetry={referenceTelemetry}
+              referenceLapId={referenceLapId}
+              sessionLaps={data.laps}
+              trackId={session.trackId}
+              carClass={session.carClass}
               onSegmentSelect={(seg) => setZoomRange([seg.from, seg.to])}
             />
 

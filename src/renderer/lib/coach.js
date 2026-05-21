@@ -5,7 +5,13 @@
  *
  * Entrada: segmentos com delta ja calculado (segmentDeltas) + os samples
  * das duas voltas. Cada sample: { d, t, th, br, st, rpm, g, v, abs, tc }.
+ *
+ * `coachConsistency` vai alem: cruza VARIAS voltas suas com a referencia
+ * e mede em quantas o mesmo erro reaparece — separa habito (recorrente,
+ * vale corrigir) de erro isolado (ruido).
  */
+
+import { segmentDeltas } from "./telemetry.js";
 
 // Perda (s) a partir da qual vale a pena comentar um segmento.
 const LOSS_THRESHOLD = 0.03;
@@ -263,5 +269,121 @@ export function coachLap(deltas, current, reference) {
       byType,
       worst: losers,
     },
+  };
+}
+
+function median(arr) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// Severidade de um erro recorrente: recorrencia alta + perda relevante
+// = habito a corrigir; recorrencia baixa = erro isolado.
+function consistencySeverity(recurrence, medianLoss) {
+  if (!recurrence || recurrence < 0.3) return "info";
+  if (recurrence >= 0.6 && (medianLoss || 0) > 0.05) return "crit";
+  if (recurrence >= 0.45) return "warn";
+  return "info";
+}
+
+// Cruza varias voltas suas com a referencia e mede a CONSISTENCIA de cada
+// erro: em quantas voltas o mesmo problema reaparece no mesmo trecho.
+// `laps`: [{ id, label, samples }]. `segments`: saida de detectSegments
+// rodada na referencia. Erro que aparece na maioria das voltas e habito;
+// erro que aparece em poucas e ruido e nao deve guiar a sua pratica.
+export function coachConsistency({ segments, reference, laps }) {
+  if (!segments?.length || !reference || !laps?.length) {
+    return { segments: [], ranked: [], lapsAnalyzed: 0, summary: null };
+  }
+
+  // Acumulador por segmento (indexado pela posicao em `segments`).
+  const acc = segments.map((seg) => ({
+    seg,
+    deltas: [], // todos os deltas validos (perda ou ganho)
+    losses: [], // so os deltas > LOSS_THRESHOLD
+    kinds: {}, // contagem de tips[0].kind nas voltas que perderam
+    tipByLoss: [], // [{ loss, tip }] das voltas que perderam
+  }));
+
+  let lapsAnalyzed = 0;
+  for (const lap of laps) {
+    if (!lap.samples || lap.samples.length < 20) continue;
+    const deltas = segmentDeltas(lap.samples, reference, segments);
+    let counted = false;
+    deltas.forEach((d, i) => {
+      const a = acc[i];
+      if (d.delta == null) return;
+      counted = true;
+      a.deltas.push(d.delta);
+      if (d.delta > LOSS_THRESHOLD) {
+        const cs = coachSegment(d, lap.samples, reference);
+        const tip = cs.tips[0] || { text: "", kind: "line" };
+        a.losses.push(d.delta);
+        a.kinds[tip.kind] = (a.kinds[tip.kind] || 0) + 1;
+        a.tipByLoss.push({ loss: d.delta, tip });
+      }
+    });
+    if (counted) lapsAnalyzed++;
+  }
+
+  const out = acc.map(({ seg, deltas, losses, kinds, tipByLoss }) => {
+    const lapsTotal = deltas.length;
+    const lapsLost = losses.length;
+    const recurrence = lapsTotal ? lapsLost / lapsTotal : 0;
+    const medianLoss = median(losses);
+    const worstLoss = losses.length ? Math.max(...losses) : null;
+
+    // Tip representativo: o da volta cuja perda fica na mediana — um
+    // exemplo concreto, nem o melhor nem o pior caso.
+    let tip = null;
+    if (tipByLoss.length) {
+      const sorted = [...tipByLoss].sort((a, b) => a.loss - b.loss);
+      tip = sorted[sorted.length >> 1].tip;
+    }
+
+    let dominantKind = null;
+    let best = 0;
+    for (const [k, c] of Object.entries(kinds)) {
+      if (c > best) {
+        best = c;
+        dominantKind = k;
+      }
+    }
+
+    return {
+      ...seg,
+      lapsTotal,
+      lapsLost,
+      recurrence,
+      medianLoss,
+      worstLoss,
+      dominantKind,
+      tip,
+      delta: medianLoss,
+      severity: consistencySeverity(recurrence, medianLoss),
+    };
+  });
+
+  // Recorrentes: erro em pelo menos 2 voltas e em >=30% das analisadas.
+  const ranked = out
+    .filter((s) => s.lapsLost >= 2 && s.recurrence >= 0.3)
+    .sort(
+      (a, b) =>
+        b.recurrence * (b.medianLoss || 0) -
+        a.recurrence * (a.medianLoss || 0)
+    );
+
+  const recurringLoss = ranked.reduce(
+    (sum, s) => sum + (s.medianLoss || 0),
+    0
+  );
+
+  return {
+    segments: out,
+    ranked,
+    lapsAnalyzed,
+    summary: { recurringLoss, lapsAnalyzed },
   };
 }
