@@ -445,6 +445,9 @@ async function runTracker({
       const hasLapTime = lastLapTime > 0;
       const hasAnyData = hasLapTime || bestSector1 > 0 || bestSector2 > 0;
       const isRace = sessionType === "race";
+      // Salva posicao na classe em corrida E qualy. Em qualy a posicao no
+      // fim da sessao = lugar no grid pela melhor volta — util de saber.
+      const savePosition = isRace || sessionType === "qualifying";
 
       // Retenta se:
       //  (a) nao-corrida sem dados (rF2 lag em mLastLapTime), OU
@@ -529,7 +532,7 @@ async function runTracker({
             // equivale ao mPlace; em multiclass mostra o numero que o
             // driver realmente espera ver. Calculado lazy aqui (1x por
             // volta) pra nao iterar veiculos a 30Hz.
-            position: isRace
+            position: savePosition
               ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
               : null,
             hasTouch,
@@ -553,7 +556,7 @@ async function runTracker({
             // equivale ao mPlace; em multiclass mostra o numero que o
             // driver realmente espera ver. Calculado lazy aqui (1x por
             // volta) pra nao iterar veiculos a 30Hz.
-            position: isRace
+            position: savePosition
               ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
               : null,
             hasTouch,

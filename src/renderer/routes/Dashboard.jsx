@@ -1,93 +1,138 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  ReferenceLine,
-} from "recharts";
-import TrackSelect from "../components/TrackSelect.jsx";
+// Analise de telemetria GLOBAL — compara duas voltas quaisquer da pista
+// selecionada, sem precisar entrar numa sessao. O track picker no topo e o
+// contexto: define de qual pista o lap picker lista sessoes/voltas.
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import DeltaChart from "../components/DeltaChart.jsx";
+import SpeedDeltaChart from "../components/SpeedDeltaChart.jsx";
+import TrackMap from "../components/TrackMap.jsx";
+import ChannelChart from "../components/ChannelChart.jsx";
+import ImportLapModal from "../components/ImportLapModal.jsx";
+import BestInRangePanel from "../components/BestInRangePanel.jsx";
+import LapPickerModal from "../components/LapPickerModal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
-import { Field } from "../components/Field.jsx";
-import { formatLapTime, formatDateTime } from "../lib/format.js";
-import { stats } from "../lib/stats.js";
-import { computeOutlierSet } from "../lib/outlier.js";
+import SegmentAnalysisModal from "../components/SegmentAnalysisModal.jsx";
+import TrackSelect from "../components/TrackSelect.jsx";
+import {
+  downsample,
+  distanceAtTime,
+  detectSegments,
+  segmentDeltas,
+} from "../lib/telemetry.js";
 
-const WINDOWS = [
-  { value: 7, label: "7D" },
-  { value: 30, label: "30D" },
-  { value: 90, label: "90D" },
-  { value: null, label: "TUDO" },
-];
+function fmtLapTime(t) {
+  if (t == null || t <= 0) return "sem tempo";
+  const m = Math.floor(t / 60);
+  const s = (t % 60).toFixed(3).padStart(6, "0");
+  return `${m}:${s}`;
+}
 
-const TYPE_ORDER = ["practice", "qualifying", "race"];
+function fmtSector(t) {
+  if (t == null || t <= 0) return "—";
+  return t.toFixed(3);
+}
 
-function StatCard({ label, value, hint, color }) {
+// Cache da configuracao da tela (pista + voltas) — persiste ao trocar de
+// tela e ao reabrir o app, pra nao ter que reconfigurar toda vez.
+const CACHE_KEY = "lmu.dashboard.v1";
+function loadCache() {
+  try {
+    return JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+function saveCache(state) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(state));
+  } catch {}
+}
+
+function fetchTelemetry(lapId) {
+  if (!lapId) return Promise.resolve(null);
+  if (lapId.startsWith("imp:")) {
+    return window.api?.getImportTelemetry?.(lapId.slice(4));
+  }
+  return window.api?.getLapTelemetry?.(lapId);
+}
+
+function describeLap(meta) {
+  if (!meta) return "— escolher —";
+  if (meta.kind === "import") {
+    return `${meta.owner} · ${fmtLapTime(meta.lapTime)}`;
+  }
+  const num = meta.lapNumber != null ? `Volta ${meta.lapNumber} · ` : "";
+  return `${num}${fmtLapTime(meta.lapTime)}`;
+}
+
+function LapPickerButton({ label, text, onClick, accent }) {
   return (
-    <div
-      style={{
-        background: "var(--bg-1)",
-        border: "1px solid var(--bd-0)",
-        padding: "var(--pad)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        minHeight: 92,
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <span
         className="mono"
         style={{
-          fontSize: 9,
-          letterSpacing: "0.18em",
-          color: "var(--tx-3)",
+          fontSize: 10,
+          letterSpacing: "0.14em",
+          color: "var(--tx-2)",
           textTransform: "uppercase",
         }}
       >
         {label}
       </span>
-      <span
+      <button
+        type="button"
+        onClick={onClick}
         className="mono"
         style={{
-          fontSize: 26,
-          fontWeight: 600,
-          color: color || "var(--tx-0)",
-          letterSpacing: "-0.01em",
-          lineHeight: 1,
+          padding: "10px 12px",
+          background: "var(--bg-1)",
+          color: accent ? "var(--accent)" : "var(--tx-0)",
+          border: "1px solid",
+          borderColor: accent ? "var(--accent)" : "var(--bd-1)",
+          fontSize: 12,
+          letterSpacing: "0.04em",
+          textAlign: "left",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
         }}
       >
-        {value}
-      </span>
-      {hint && (
-        <span
-          className="mono"
-          style={{
-            fontSize: 9,
-            letterSpacing: "0.14em",
-            color: "var(--tx-2)",
-            textTransform: "uppercase",
-          }}
-        >
-          {hint}
-        </span>
-      )}
+        <span>{text}</span>
+        <span style={{ color: "var(--tx-3)" }}>▾</span>
+      </button>
     </div>
   );
 }
 
-function Panel({ title, right, children, height }) {
+// Delta de um setor vs o mesmo setor da volta B. Verde = mais rapido.
+function SectorDelta({ value, refValue }) {
+  if (value == null || value <= 0 || refValue == null || refValue <= 0) {
+    return <div style={{ height: 13 }} />;
+  }
+  const d = value - refValue;
+  const faster = d < 0;
   return (
     <div
+      className="mono"
       style={{
-        background: "var(--bg-1)",
-        border: "1px solid var(--bd-0)",
-        display: "flex",
-        flexDirection: "column",
+        fontSize: 11,
+        fontWeight: 600,
+        color: faster ? "var(--ok)" : "var(--crit)",
+        lineHeight: 1.2,
       }}
     >
+      {faster ? "" : "+"}
+      {d.toFixed(3)}
+    </div>
+  );
+}
+
+function SidePanel({ title, right, children }) {
+  return (
+    <div style={{ background: "var(--bg-1)", border: "1px solid var(--bd-0)" }}>
       <div
         style={{
           padding: "10px 14px",
@@ -104,6 +149,7 @@ function Panel({ title, right, children, height }) {
             letterSpacing: "0.14em",
             color: "var(--tx-1)",
             textTransform: "uppercase",
+            fontWeight: 600,
           }}
         >
           {title}
@@ -112,7 +158,7 @@ function Panel({ title, right, children, height }) {
           <span
             className="mono"
             style={{
-              fontSize: 10,
+              fontSize: 9,
               letterSpacing: "0.14em",
               color: "var(--tx-3)",
               textTransform: "uppercase",
@@ -122,193 +168,292 @@ function Panel({ title, right, children, height }) {
           </span>
         )}
       </div>
-      <div style={{ height: height || "auto", padding: 12 }}>{children}</div>
+      <div style={{ padding: "var(--pad)" }}>{children}</div>
     </div>
   );
-}
-
-function WindowSegmented({ value, onChange }) {
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        border: "1px solid var(--bd-1)",
-      }}
-    >
-      {WINDOWS.map((w, i) => {
-        const active = value === w.value;
-        return (
-          <button
-            key={w.label}
-            type="button"
-            onClick={() => onChange(w.value)}
-            className="mono"
-            style={{
-              padding: "8px 12px",
-              fontSize: 10,
-              letterSpacing: "0.14em",
-              background: active ? "var(--bg-3)" : "transparent",
-              color: active ? "var(--accent)" : "var(--tx-2)",
-              border: "none",
-              borderRight:
-                i < WINDOWS.length - 1 ? "1px solid var(--bd-1)" : "none",
-              fontWeight: active ? 600 : 400,
-              cursor: "pointer",
-            }}
-          >
-            {w.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function computeTypeStats(laps) {
-  const byType = new Map();
-  for (const l of laps) {
-    if (!byType.has(l.session.type))
-      byType.set(l.session.type, { valid: [], invalid: 0 });
-    const b = byType.get(l.session.type);
-    if (l.isValid) b.valid.push(l.lapTime);
-    else b.invalid += 1;
-  }
-  const rows = [];
-  for (const [type, b] of byType) {
-    if (b.valid.length === 0) continue;
-    const s = stats(b.valid);
-    const total = b.valid.length + b.invalid;
-    rows.push({
-      type,
-      validCount: b.valid.length,
-      invalidCount: b.invalid,
-      invalidRate: total > 0 ? b.invalid / total : 0,
-      stats: s,
-    });
-  }
-  rows.sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
-  return rows;
-}
-
-function computeCarStats(laps) {
-  const byCar = new Map();
-  for (const l of laps) {
-    if (!l.isValid) continue;
-    const key = l.session.car;
-    if (!byCar.has(key))
-      byCar.set(key, { times: [], carClass: l.session.carClass });
-    byCar.get(key).times.push(l.lapTime);
-  }
-  const rows = [];
-  for (const [car, b] of byCar) {
-    if (b.times.length < 3) continue;
-    const s = stats(b.times);
-    rows.push({
-      car,
-      carClass: b.carClass,
-      count: b.times.length,
-      stats: s,
-    });
-  }
-  rows.sort((a, b) => a.stats.median - b.stats.median);
-  return rows;
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [tracks, setTracks] = useState([]);
   const [trackId, setTrackId] = useState(null);
-  const [windowDays, setWindowDays] = useState(30);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [outlierPct, setOutlierPct] = useState(7);
 
-  useEffect(() => {
-    window.api?.getConfig?.().then((c) => {
-      if (c) setOutlierPct(c.outlier_threshold_pct ?? 7);
-    });
-  }, []);
+  const lapAId = searchParams.get("a");
+  const lapBId = searchParams.get("b");
 
+  const setLapParam = (key, id) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set(key, id);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  const [lapAMeta, setLapAMeta] = useState(null);
+  const [lapBMeta, setLapBMeta] = useState(null);
+  const [telemetryA, setTelemetryA] = useState(null);
+  const [telemetryB, setTelemetryB] = useState(null);
+  const [loadingA, setLoadingA] = useState(false);
+  const [loadingB, setLoadingB] = useState(false);
+  const [hoverDistance, setHoverDistance] = useState(null);
+  const [zoomRange, setZoomRange] = useState(null);
+  const [otherLaps, setOtherLaps] = useState([]);
+  const [importedLaps, setImportedLaps] = useState([]);
+  const [showImport, setShowImport] = useState(false);
+  const [showBestInRange, setShowBestInRange] = useState(false);
+  const [showSegmentAnalysis, setShowSegmentAnalysis] = useState(false);
+  const [pickerMode, setPickerMode] = useState(null); // "a" | "b" | null
+
+  // Flag: so persiste no cache depois de restaurar (evita o save inicial
+  // com estado vazio sobrescrever o cache antes do restore).
+  const cacheReady = useRef(false);
+
+  // Carrega pistas + restaura cache (ou ultima pista jogada)
   useEffect(() => {
     (async () => {
       const [t, last] = await Promise.all([
         window.api?.listTracks?.() ?? [],
         window.api?.getLastTrack?.() ?? null,
       ]);
-      setTracks(t || []);
-      if (last) setTrackId(last);
+      const list = t || [];
+      setTracks(list);
+      const cache = loadCache();
+      // So usa trackId do cache se a pista ainda existe
+      const cachedTrack =
+        cache.trackId && list.some((x) => x.id === cache.trackId)
+          ? cache.trackId
+          : null;
+      setTrackId(cachedTrack || last || null);
+      // Restaura voltas do cache se a URL nao trouxe nenhuma
+      if (!lapAId && !lapBId && (cache.a || cache.b)) {
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            if (cache.a) next.set("a", cache.a);
+            if (cache.b) next.set("b", cache.b);
+            return next;
+          },
+          { replace: true }
+        );
+      }
+      cacheReady.current = true;
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persiste configuracao a cada mudanca
+  useEffect(() => {
+    if (!cacheReady.current) return;
+    saveCache({ trackId, a: lapAId, b: lapBId });
+  }, [trackId, lapAId, lapBId]);
+
+  const trackName = useMemo(
+    () => tracks.find((t) => t.id === trackId)?.name ?? null,
+    [tracks, trackId]
+  );
+
+  // Trocar de pista limpa as voltas escolhidas (sao de outra pista).
+  // Limpa as duas numa unica chamada — duas chamadas separadas de
+  // setSearchParams recebem o mesmo prev e a segunda sobrescreve a primeira.
+  const changeTrack = (id) => {
+    setTrackId(id);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("a");
+        next.delete("b");
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
+  // Pool de voltas pro picker (abas melhores/S1-S3): top da pista + imports
   useEffect(() => {
     if (!trackId) {
-      setData(null);
+      setOtherLaps([]);
+      return;
+    }
+    window.api
+      ?.getTopLapsByTrack?.({ trackId, limit: 30 })
+      .then((r) => setOtherLaps(r || []));
+  }, [trackId]);
+
+  const loadImported = () => {
+    if (!trackName) {
+      setImportedLaps([]);
+      return;
+    }
+    window.api
+      ?.listImportsForTrack?.({ trackName })
+      .then((r) => setImportedLaps(r || []));
+  };
+  useEffect(() => {
+    loadImported();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackName]);
+
+  // Metadata + telemetria da volta A
+  useEffect(() => {
+    if (!lapAId) {
+      setLapAMeta(null);
+      setTelemetryA(null);
       return;
     }
     let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const d = await window.api?.getDashboard?.({ trackId, windowDays });
-        if (!cancelled) setData(d);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    setLoadingA(true);
+    Promise.all([
+      window.api?.getLapMeta?.(lapAId),
+      fetchTelemetry(lapAId),
+    ]).then(([meta, telem]) => {
+      if (cancelled) return;
+      setLapAMeta(meta || null);
+      setTelemetryA(telem || null);
+      setLoadingA(false);
+    });
     return () => {
       cancelled = true;
     };
-  }, [trackId, windowDays]);
+  }, [lapAId]);
 
-  const analysis = useMemo(() => {
-    if (!data || !data.laps) return null;
-    const laps = data.laps;
-    const outlierSet = computeOutlierSet(laps, outlierPct);
-    const kept = laps.filter((l) => !outlierSet.has(l.id));
-    const validTimes = kept.filter((l) => l.isValid).map((l) => l.lapTime);
-    if (validTimes.length === 0) return null;
-    const s = stats(validTimes);
-    const chartData = kept.map((l, i) => ({
-      idx: i + 1,
-      lapTime: l.isValid ? l.lapTime : null,
-      when: formatDateTime(l.createdAt),
-    }));
-    const pad = Math.max(0.5, (s.max - s.min) * 0.15);
-    const yMin = Math.max(0, s.min - pad);
-    const yMax = s.max + pad;
-    return {
-      laps: kept,
-      rawLapsCount: laps.length,
-      outlierCount: outlierSet.size,
-      s,
-      chartData,
-      yDomain: [yMin, yMax],
-      byType: computeTypeStats(kept),
-      byCar: computeCarStats(kept),
+  // Metadata + telemetria da volta B
+  useEffect(() => {
+    if (!lapBId) {
+      setLapBMeta(null);
+      setTelemetryB(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingB(true);
+    Promise.all([
+      window.api?.getLapMeta?.(lapBId),
+      fetchTelemetry(lapBId),
+    ]).then(([meta, telem]) => {
+      if (cancelled) return;
+      setLapBMeta(meta || null);
+      setTelemetryB(telem || null);
+      setLoadingB(false);
+    });
+    return () => {
+      cancelled = true;
     };
-  }, [data, outlierPct]);
+  }, [lapBId]);
 
-  const empty = (label) => (
+  useEffect(() => {
+    setZoomRange(null);
+  }, [lapAId, lapBId]);
+
+  const telemetryDs = useMemo(
+    () => (telemetryA ? downsample(telemetryA, 700) : null),
+    [telemetryA]
+  );
+  const referenceDs = useMemo(
+    () => (telemetryB ? downsample(telemetryB, 700) : null),
+    [telemetryB]
+  );
+
+  const segments = useMemo(
+    () => (telemetryB ? detectSegments(telemetryB) : []),
+    [telemetryB]
+  );
+  const segmentDelta = useMemo(() => {
+    if (!segments.length || !telemetryA || !telemetryB) return [];
+    return segmentDeltas(telemetryA, telemetryB, segments);
+  }, [segments, telemetryA, telemetryB]);
+
+  const sectorMarkers = useMemo(() => {
+    if (!telemetryA || !lapAMeta) return null;
+    const s1 =
+      lapAMeta.sector1 && lapAMeta.sector1 > 0
+        ? distanceAtTime(telemetryA, lapAMeta.sector1)
+        : null;
+    const s2 =
+      lapAMeta.sector2 && lapAMeta.sector2 > 0
+        ? distanceAtTime(telemetryA, lapAMeta.sector2)
+        : null;
+    if (s1 == null && s2 == null) return null;
+    return { s1, s2 };
+  }, [telemetryA, lapAMeta]);
+
+  // Steering raramente usa ±100% — eixo fixo [-1,1] achata as nuances.
+  // Escala simetrica pro maior angulo usado nas duas voltas (+15% de folga).
+  const steeringDomain = useMemo(() => {
+    let maxAbs = 0.1;
+    for (const t of [telemetryA, telemetryB]) {
+      if (!t) continue;
+      for (const s of t) {
+        const v = Math.abs(s.st ?? 0);
+        if (v > maxAbs) maxAbs = v;
+      }
+    }
+    const padded = Math.min(1, maxAbs * 1.15);
+    return [-padded, padded];
+  }, [telemetryA, telemetryB]);
+
+  const channelStats = useMemo(() => {
+    if (!telemetryA) return null;
+    const n = telemetryA.length;
+    let throttleSum = 0;
+    let fullThrottleN = 0;
+    let brakingN = 0;
+    let speedSum = 0;
+    let speedSamples = 0;
+    let vMax = 0;
+    let vMin = Infinity;
+    let rpmMax = 0;
+    for (const s of telemetryA) {
+      const th = s.th ?? 0;
+      const br = s.br ?? 0;
+      const v = s.v;
+      const rpm = s.rpm ?? 0;
+      throttleSum += th;
+      if (th >= 0.95) fullThrottleN++;
+      if (br >= 0.05) brakingN++;
+      if (v != null) {
+        if (v > vMax) vMax = v;
+        if (v > 5 && v < vMin) vMin = v;
+        speedSum += v;
+        speedSamples++;
+      }
+      if (rpm > rpmMax) rpmMax = rpm;
+    }
+    return {
+      fullThrottlePct: n ? fullThrottleN / n : 0,
+      brakingPct: n ? brakingN / n : 0,
+      vAvg: speedSamples ? speedSum / speedSamples : 0,
+      vMax,
+      vMin: isFinite(vMin) ? vMin : 0,
+      rpmMax,
+    };
+  }, [telemetryA]);
+
+  const emptyBox = (label) => (
     <div
       style={{
+        margin: "var(--pad)",
         border: "1px solid var(--bd-0)",
         background: "var(--bg-1)",
         padding: "48px var(--pad)",
         textAlign: "center",
-        margin: "0 var(--pad) var(--pad)",
       }}
     >
       <span
         className="mono"
-        style={{
-          fontSize: 10,
-          letterSpacing: "0.18em",
-          color: "var(--tx-3)",
-        }}
+        style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--tx-3)" }}
       >
         {label}
       </span>
     </div>
   );
+
+  const excludeForA = lapBId || null;
+  const excludeForB = lapAId || null;
 
   return (
     <div
@@ -320,404 +465,475 @@ export default function Dashboard() {
       }}
     >
       <PageHeader
-        crumbs={[{ label: "DASHBOARD" }, { label: "ANÁLISE" }]}
-        actions={<WindowSegmented value={windowDays} onChange={setWindowDays} />}
+        crumbs={[{ label: "ANÁLISE" }, { label: "COMPARAR VOLTAS" }]}
+        actions={
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowImport(true)}
+              title="Importar volta de um amigo (JSON)"
+            >
+              IMPORTAR
+            </button>
+            {telemetryB && segmentDelta.length > 0 && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowSegmentAnalysis(true)}
+                title="Análise por segmento (FREADA/SAÍDA/RETA)"
+              >
+                ANÁLISE POR SEGMENTO
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn solid"
+              onClick={() => {
+                const q = lapBId
+                  ? `?mode=3d&ref=${encodeURIComponent(lapBId)}`
+                  : "?mode=3d";
+                navigate(`/replay/${lapAId}${q}`);
+              }}
+              disabled={!lapAId}
+              style={{ opacity: !lapAId ? 0.4 : 1 }}
+            >
+              ▶ REPLAY
+            </button>
+          </div>
+        }
       />
 
-      {/* Filter */}
+      {/* Track picker + lap pickers */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 360px) 1fr",
+          gridTemplateColumns: "minmax(0, 300px) 1fr 1fr",
           gap: "var(--gap)",
           padding: "var(--pad)",
+          alignItems: "end",
         }}
       >
-        <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
+        <TrackSelect tracks={tracks} value={trackId} onChange={changeTrack} />
+        <LapPickerButton
+          label="Volta A"
+          onClick={() => trackId && setPickerMode("a")}
+          text={loadingA ? "carregando..." : describeLap(lapAMeta)}
+        />
+        <LapPickerButton
+          label="Volta B (comparar)"
+          accent={!!lapBId}
+          onClick={() => trackId && setPickerMode("b")}
+          text={
+            loadingB
+              ? "carregando..."
+              : lapBMeta
+              ? describeLap(lapBMeta)
+              : "— nenhuma —"
+          }
+        />
       </div>
 
-      {!trackId ? (
-        empty("SELECIONE UMA PISTA")
-      ) : loading ? (
-        empty("CARREGANDO...")
-      ) : !analysis ? (
-        empty("SEM VOLTAS VÁLIDAS NESSA JANELA")
-      ) : (
-        <>
-          {/* Stats row */}
-          <div
+      {/* Zoom bar */}
+      {zoomRange && (
+        <div
+          style={{
+            margin: "0 var(--pad) var(--pad)",
+            padding: "10px 14px",
+            border: "1px solid var(--accent)",
+            background: "rgba(214, 255, 0, 0.04)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span
+            className="mono"
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "var(--gap)",
-              padding: "0 var(--pad) var(--pad)",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              color: "var(--accent)",
+              textTransform: "uppercase",
+              fontWeight: 600,
             }}
           >
-            <StatCard
-              label="Melhor Volta"
-              value={formatLapTime(analysis.s.min)}
+            ZOOM · {Math.round(zoomRange[0])}m → {Math.round(zoomRange[1])}m ·{" "}
+            {Math.round(zoomRange[1] - zoomRange[0])}m
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowBestInRange(true)}
+              title="Voltas mais rápidas neste trecho"
+            >
+              MELHORES NESTE TRECHO
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setZoomRange(null)}
+            >
+              RESET ZOOM
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!trackId ? (
+        emptyBox("SELECIONE UMA PISTA")
+      ) : loadingA ? (
+        emptyBox("CARREGANDO TELEMETRIA...")
+      ) : telemetryA ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 320px",
+            gap: "var(--gap)",
+            padding: "0 var(--pad) var(--pad)",
+          }}
+        >
+          {/* Charts */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--gap)",
+              minWidth: 0,
+            }}
+          >
+            {referenceDs && !loadingB && (
+              <>
+                <DeltaChart
+                  current={telemetryDs}
+                  reference={referenceDs}
+                  onHover={setHoverDistance}
+                  onZoomChange={setZoomRange}
+                  zoomRange={zoomRange}
+                  sectorMarkers={sectorMarkers}
+                />
+                <SpeedDeltaChart
+                  current={telemetryDs}
+                  reference={referenceDs}
+                  onHover={setHoverDistance}
+                  onZoomChange={setZoomRange}
+                  zoomRange={zoomRange}
+                  sectorMarkers={sectorMarkers}
+                />
+              </>
+            )}
+            <ChannelChart
+              title="THROTTLE"
+              subtitle="%"
+              channelKey="th"
+              color="var(--throttle)"
+              yDomain={[0, 1]}
+              formatter={(v) => `${Math.round(v * 100)}%`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+            />
+            <ChannelChart
+              title="BRAKE"
+              subtitle="%"
+              channelKey="br"
+              color="var(--brake)"
+              yDomain={[0, 1]}
+              formatter={(v) => `${Math.round(v * 100)}%`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+            />
+            <ChannelChart
+              title="STEERING"
+              subtitle="%"
+              channelKey="st"
+              color="var(--steer)"
+              yDomain={steeringDomain}
+              formatter={(v) => `${Math.round(v * 100)}%`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+            />
+            <ChannelChart
+              title="VELOCIDADE"
+              subtitle="KM/H"
+              channelKey="v"
               color="var(--speed)"
-              hint={`${analysis.s.count} válidas`}
+              yDomain={["auto", "auto"]}
+              formatter={(v) => `${Math.round(v)}`}
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+              height={170}
             />
-            <StatCard
-              label="Média"
-              value={formatLapTime(analysis.s.mean)}
-              hint={`Δ +${(analysis.s.mean - analysis.s.min).toFixed(2)}s`}
-            />
-            <StatCard
-              label="Mediana"
-              value={formatLapTime(analysis.s.median)}
-              hint="Tendência central"
-            />
-            <StatCard
-              label="σ Consistência"
-              value={`${analysis.s.stdDev.toFixed(2)}s`}
-              hint={
-                analysis.s.stdDev < 1
-                  ? "Excelente"
-                  : analysis.s.stdDev < 2
-                  ? "Boa"
-                  : "Instável"
+            <ChannelChart
+              title="MARCHA"
+              channelKey="g"
+              color="var(--gear)"
+              yDomain={[-1, 8]}
+              formatter={(v) =>
+                v == null
+                  ? "—"
+                  : v <= -1
+                  ? "R"
+                  : v === 0
+                  ? "N"
+                  : String(Math.round(v))
               }
-              color={
-                analysis.s.stdDev < 1
-                  ? "var(--ok)"
-                  : analysis.s.stdDev >= 2
-                  ? "var(--crit)"
-                  : "var(--tx-0)"
-              }
+              current={telemetryDs}
+              reference={referenceDs}
+              onHover={setHoverDistance}
+              onZoomChange={setZoomRange}
+              zoomRange={zoomRange}
+              sectorMarkers={sectorMarkers}
+              stepped
             />
           </div>
 
-          {/* Lap evolution chart */}
-          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
-            <Panel
-              title="Evolução · Todas as Voltas"
-              right={
-                <>
-                  MÉDIA {formatLapTime(analysis.s.mean)}
-                  {analysis.outlierCount > 0
-                    ? ` · ${analysis.outlierCount} OUTLIER${
-                        analysis.outlierCount > 1 ? "S" : ""
-                      } DESCONSIDERADA${analysis.outlierCount > 1 ? "S" : ""}`
-                    : ""}
-                </>
-              }
-              height={320}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={analysis.chartData}
-                  margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
-                >
-                  <CartesianGrid stroke="var(--bd-0)" strokeDasharray="2 4" />
-                  <XAxis
-                    dataKey="idx"
-                    stroke="var(--tx-3)"
-                    tick={{ fontSize: 10, fontFamily: "Geist Mono" }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    stroke="var(--tx-3)"
-                    tick={{ fontSize: 10, fontFamily: "Geist Mono" }}
-                    tickLine={false}
-                    tickFormatter={(v) => formatLapTime(v)}
-                    width={70}
-                    domain={analysis.yDomain}
-                    allowDataOverflow={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "var(--bg-3)",
-                      border: "1px solid var(--bd-2)",
-                      fontSize: 11,
-                      fontFamily: "Geist Mono",
-                      letterSpacing: "0.04em",
-                    }}
-                    labelStyle={{ color: "var(--tx-3)" }}
-                    itemStyle={{ color: "var(--tx-0)" }}
-                    labelFormatter={(l, items) =>
-                      items?.[0]?.payload?.when ?? `#${l}`
-                    }
-                    formatter={(v) => [v ? formatLapTime(v) : "—", "tempo"]}
-                  />
-                  <ReferenceLine
-                    y={analysis.s.mean}
-                    stroke="var(--tx-3)"
-                    strokeDasharray="4 4"
-                  />
-                  <ReferenceLine
-                    y={analysis.s.min}
-                    stroke="var(--speed)"
-                    strokeDasharray="2 4"
-                    strokeOpacity={0.5}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="lapTime"
-                    stroke="var(--crit)"
-                    strokeWidth={1.4}
-                    dot={{ r: 2.5, fill: "var(--crit)", strokeWidth: 0 }}
-                    activeDot={{ r: 4, fill: "var(--accent)" }}
-                    connectNulls
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Panel>
-          </div>
+          {/* Sidebar */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--gap)",
+              position: "sticky",
+              top: 0,
+              alignSelf: "flex-start",
+              height: "fit-content",
+            }}
+          >
+            <SidePanel title="Traçado" right="DRAG = ZOOM">
+              <TrackMap
+                telemetry={telemetryA}
+                reference={telemetryB}
+                hoverDistance={hoverDistance}
+                zoomRange={zoomRange}
+                sectorMarkers={sectorMarkers}
+              />
+            </SidePanel>
 
-          {/* Per-type cards */}
-          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
-            <div
-              style={{
-                marginBottom: 8,
-                display: "flex",
-                alignItems: "baseline",
-                gap: 12,
-              }}
-            >
-              <span
-                className="mono"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.18em",
-                  color: "var(--tx-1)",
-                  textTransform: "uppercase",
-                  fontWeight: 600,
-                }}
+            {lapAMeta && (
+              <SidePanel
+                title={
+                  lapAMeta.lapNumber != null
+                    ? `Volta A · ${lapAMeta.lapNumber}`
+                    : "Volta A"
+                }
+                right={lapAMeta.isValid ? "VÁLIDA" : "INVÁLIDA"}
               >
-                Ritmo por Tipo
-              </span>
-            </div>
-            {analysis.byType.length === 0 ? (
-              <div
-                style={{
-                  border: "1px solid var(--bd-0)",
-                  background: "var(--bg-1)",
-                  padding: "32px var(--pad)",
-                  textAlign: "center",
-                }}
-              >
-                <span
+                <div
                   className="mono"
                   style={{
-                    fontSize: 10,
-                    letterSpacing: "0.18em",
-                    color: "var(--tx-3)",
+                    fontSize: 26,
+                    fontWeight: 600,
+                    color: lapAMeta.isValid ? "var(--speed)" : "var(--crit)",
+                    lineHeight: 1,
+                    marginBottom: 12,
                   }}
                 >
-                  SEM DADOS POR TIPO
-                </span>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${Math.min(
-                    3,
-                    analysis.byType.length
-                  )}, 1fr)`,
-                  gap: "var(--gap)",
-                }}
-              >
-                {analysis.byType.map((r) => {
-                  const rate = r.invalidRate;
-                  const rateColor =
-                    rate <= 0.05
-                      ? "var(--ok)"
-                      : rate <= 0.15
-                      ? "var(--warn)"
-                      : "var(--crit)";
-                  return (
+                  {fmtLapTime(lapAMeta.lapTime)}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  {[
+                    ["S1", lapAMeta.sector1, lapBMeta?.sector1],
+                    ["S2", lapAMeta.sector2, lapBMeta?.sector2],
+                    ["S3", lapAMeta.sector3, lapBMeta?.sector3],
+                  ].map(([k, v, refV]) => (
+                    <div key={k}>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 9,
+                          color: "var(--tx-3)",
+                          letterSpacing: "0.18em",
+                        }}
+                      >
+                        {k}
+                      </div>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 13,
+                          color: "var(--tx-0)",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {fmtSector(v)}
+                      </div>
+                      <SectorDelta value={v} refValue={refV} />
+                    </div>
+                  ))}
+                </div>
+                {lapBMeta && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 12,
+                      borderTop: "1px solid var(--bd-0)",
+                    }}
+                  >
                     <div
-                      key={r.type}
+                      className="mono"
                       style={{
-                        background: "var(--bg-1)",
-                        border: "1px solid var(--bd-0)",
-                        padding: "var(--pad)",
+                        fontSize: 9,
+                        letterSpacing: "0.18em",
+                        color: "var(--tx-3)",
+                        textTransform: "uppercase",
+                        marginBottom: 6,
+                      }}
+                    >
+                      vs Volta B · {fmtLapTime(lapBMeta.lapTime)}
+                    </div>
+                    <div
+                      className="mono"
+                      style={{
+                        fontSize: 20,
+                        fontWeight: 600,
+                        color:
+                          lapAMeta.lapTime < lapBMeta.lapTime
+                            ? "var(--ok)"
+                            : "var(--crit)",
+                      }}
+                    >
+                      {lapAMeta.lapTime < lapBMeta.lapTime ? "" : "+"}
+                      {(lapAMeta.lapTime - lapBMeta.lapTime).toFixed(3)}s
+                    </div>
+                  </div>
+                )}
+              </SidePanel>
+            )}
+
+            {channelStats && (
+              <SidePanel title="Métricas · Volta A">
+                <div
+                  className="mono"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                >
+                  {[
+                    [
+                      "% PÉ FUNDO",
+                      `${(channelStats.fullThrottlePct * 100).toFixed(1)}%`,
+                      "var(--throttle)",
+                    ],
+                    [
+                      "% NA FREADA",
+                      `${(channelStats.brakingPct * 100).toFixed(1)}%`,
+                      "var(--brake)",
+                    ],
+                    [
+                      "VEL. MÉDIA",
+                      `${Math.round(channelStats.vAvg)} km/h`,
+                      "var(--tx-1)",
+                    ],
+                    [
+                      "VEL. MAX",
+                      `${Math.round(channelStats.vMax)} km/h`,
+                      "var(--speed)",
+                    ],
+                    [
+                      "VEL. MIN",
+                      channelStats.vMin > 0
+                        ? `${Math.round(channelStats.vMin)} km/h`
+                        : "—",
+                      "var(--tx-2)",
+                    ],
+                    [
+                      "RPM MAX",
+                      Math.round(channelStats.rpmMax).toLocaleString("pt-BR"),
+                      "var(--rpm)",
+                    ],
+                  ].map(([k, v, c]) => (
+                    <div
+                      key={k}
+                      style={{
                         display: "flex",
-                        flexDirection: "column",
-                        gap: 10,
+                        justifyContent: "space-between",
+                        fontSize: 11,
                       }}
                     >
                       <span
-                        className="mono"
-                        style={{
-                          fontSize: 9,
-                          letterSpacing: "0.18em",
-                          color: "var(--tx-3)",
-                          textTransform: "uppercase",
-                        }}
+                        style={{ color: "var(--tx-3)", letterSpacing: "0.14em" }}
                       >
-                        {r.type}
+                        {k}
                       </span>
-                      <span
-                        className="mono"
-                        style={{
-                          fontSize: 26,
-                          fontWeight: 600,
-                          color: "var(--tx-0)",
-                          letterSpacing: "-0.01em",
-                          lineHeight: 1,
-                        }}
-                      >
-                        {formatLapTime(r.stats.median)}
-                      </span>
-                      <div
-                        className="mono"
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          fontSize: 10,
-                          color: "var(--tx-2)",
-                          letterSpacing: "0.06em",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span>
-                          MELHOR{" "}
-                          <span style={{ color: "var(--speed)" }}>
-                            {formatLapTime(r.stats.min)}
-                          </span>
-                        </span>
-                        <span style={{ color: "var(--tx-3)" }}>·</span>
-                        <span>σ {r.stats.stdDev.toFixed(2)}s</span>
-                      </div>
-                      <div
-                        className="mono"
-                        style={{
-                          fontSize: 9,
-                          letterSpacing: "0.14em",
-                          color: "var(--tx-3)",
-                          textTransform: "uppercase",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          paddingTop: 6,
-                          borderTop: "1px solid var(--bd-0)",
-                        }}
-                      >
-                        <span>
-                          {r.validCount} válidas · {r.invalidCount} inválidas
-                        </span>
-                        <span style={{ color: rateColor }}>
-                          {(rate * 100).toFixed(0)}%
-                        </span>
-                      </div>
+                      <span style={{ color: c, fontWeight: 500 }}>{v}</span>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              </SidePanel>
             )}
           </div>
-
-          {/* Per-car table */}
-          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
-            <Panel
-              title="Consistência por Carro"
-              right="MELHOR MEDIANA NO TOPO"
-            >
-              {analysis.byCar.length === 0 ? (
-                <div
-                  style={{
-                    padding: "32px var(--pad)",
-                    textAlign: "center",
-                  }}
-                >
-                  <span
-                    className="mono"
-                    style={{
-                      fontSize: 10,
-                      letterSpacing: "0.18em",
-                      color: "var(--tx-3)",
-                    }}
-                  >
-                    PRECISA DE 3+ VOLTAS VÁLIDAS POR CARRO
-                  </span>
-                </div>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table className="laps">
-                    <thead>
-                      <tr>
-                        <th>Carro</th>
-                        <th>Classe</th>
-                        <th className="num">Voltas</th>
-                        <th className="num">Melhor</th>
-                        <th className="num">Mediana</th>
-                        <th className="num">σ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(() => {
-                        const minOfMins = Math.min(
-                          ...analysis.byCar.map((r) => r.stats.min)
-                        );
-                        return analysis.byCar.map((r, i) => {
-                          const isFastest = r.stats.min === minOfMins;
-                          return (
-                            <tr key={r.car}>
-                              <td>
-                                <span
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                  }}
-                                >
-                                  <span>{r.car}</span>
-                                  {i === 0 && (
-                                    <span className="chip accent">TOP</span>
-                                  )}
-                                </span>
-                              </td>
-                              <td style={{ color: "var(--tx-2)" }}>
-                                {r.carClass}
-                              </td>
-                              <td
-                                className="num"
-                                style={{ color: "var(--tx-1)" }}
-                              >
-                                {r.count}
-                              </td>
-                              <td
-                                className="num"
-                                style={{
-                                  color: isFastest
-                                    ? "var(--speed)"
-                                    : "var(--tx-0)",
-                                  fontWeight: isFastest ? 600 : 400,
-                                }}
-                              >
-                                {formatLapTime(r.stats.min)}
-                              </td>
-                              <td
-                                className="num"
-                                style={{
-                                  color: i === 0 ? "var(--tx-0)" : "var(--tx-1)",
-                                  fontWeight: i === 0 ? 600 : 400,
-                                }}
-                              >
-                                {formatLapTime(r.stats.median)}
-                              </td>
-                              <td
-                                className="num"
-                                style={{ color: "var(--tx-2)" }}
-                              >
-                                {r.stats.stdDev.toFixed(2)}s
-                              </td>
-                            </tr>
-                          );
-                        });
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Panel>
-          </div>
-        </>
+        </div>
+      ) : (
+        emptyBox("ESCOLHA A VOLTA A PRA COMEÇAR")
       )}
+
+      <ImportLapModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={loadImported}
+      />
+
+      <BestInRangePanel
+        open={showBestInRange}
+        onClose={() => setShowBestInRange(false)}
+        range={zoomRange}
+        currentLapId={lapAId}
+        currentTelemetry={telemetryA}
+        sessionLaps={[]}
+        otherLaps={otherLaps}
+        importedLaps={importedLaps}
+        onSelect={(id) => setLapParam("b", id)}
+      />
+
+      <SegmentAnalysisModal
+        open={showSegmentAnalysis}
+        onClose={() => setShowSegmentAnalysis(false)}
+        deltas={segmentDelta}
+        telemetry={telemetryA}
+        referenceTelemetry={telemetryB}
+        onSegmentSelect={(seg) => setZoomRange([seg.from, seg.to])}
+      />
+
+      <LapPickerModal
+        open={pickerMode != null}
+        onClose={() => setPickerMode(null)}
+        mode={pickerMode === "b" ? "reference" : "primary"}
+        title={pickerMode === "b" ? "Escolher Volta B" : "Escolher Volta A"}
+        trackId={trackId}
+        sessionLaps={[]}
+        otherLaps={otherLaps}
+        importedLaps={importedLaps}
+        selectedLapId={pickerMode === "b" ? lapBId : lapAId}
+        excludeLapId={pickerMode === "b" ? excludeForB : excludeForA}
+        onSelect={(id) => {
+          if (pickerMode === "b") setLapParam("b", id);
+          else setLapParam("a", id);
+        }}
+      />
     </div>
   );
 }

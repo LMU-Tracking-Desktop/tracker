@@ -282,6 +282,24 @@ ipcMain.handle("sessions.list", async (_e, filter = {}) => {
     }),
     prisma.session.count({ where }),
   ]);
+
+  // Posicao final por sessao: posicao da volta de maior lapNumber que tenha
+  // position != null. So existe em corrida/qualy.
+  const sessionIds = sessions.map((s) => s.id);
+  const posLaps =
+    sessionIds.length > 0
+      ? await prisma.lap.findMany({
+          where: { sessionId: { in: sessionIds }, position: { not: null } },
+          select: { sessionId: true, lapNumber: true, position: true },
+          orderBy: { lapNumber: "desc" },
+        })
+      : [];
+  const finalPosBySession = new Map();
+  for (const l of posLaps) {
+    if (!finalPosBySession.has(l.sessionId))
+      finalPosBySession.set(l.sessionId, l.position);
+  }
+
   // Computa best/avg e remove o array gigante de laps do payload
   const sessionsWithStats = sessions.map((s) => {
     const times = s.laps.map((l) => l.lapTime);
@@ -291,7 +309,12 @@ ipcMain.handle("sessions.list", async (_e, filter = {}) => {
         ? times.reduce((a, b) => a + b, 0) / times.length
         : null;
     const { laps, ...rest } = s;
-    return { ...rest, bestLap, avgLap };
+    return {
+      ...rest,
+      bestLap,
+      avgLap,
+      finalPosition: finalPosBySession.get(s.id) ?? null,
+    };
   });
   return { sessions: sessionsWithStats, total, page, pageSize };
 });
@@ -342,6 +365,87 @@ ipcMain.handle("sessions.detail", async (_e, sessionId) => {
     `[DBG] sessions.detail ${sessionId} → ${lapsWithFlag.length} laps [${numbers}]`
   );
   return { session, laps: lapsWithFlag, car };
+});
+
+// Metadata de uma volta isolada (sem carregar a sessao inteira). Aceita id
+// normal de Lap ou id prefixado "imp:" de ImportedLap. Usado pela tela de
+// analise global, que escolhe voltas de qualquer sessao/pista.
+ipcMain.handle("laps.meta", async (_e, lapId) => {
+  if (!prisma || !lapId) return null;
+  try {
+    if (typeof lapId === "string" && lapId.startsWith("imp:")) {
+      const imp = await prisma.importedLap.findUnique({
+        where: { id: lapId.slice(4) },
+      });
+      if (!imp) return null;
+      return {
+        id: lapId,
+        kind: "import",
+        lapNumber: imp.lapNumber,
+        lapTime: imp.lapTime,
+        isValid: imp.isValid !== false,
+        sector1: imp.sector1,
+        sector2: imp.sector2,
+        sector3: imp.sector3,
+        hasTouch: !!imp.hasTouch,
+        hasTelemetry: imp.telemetryJson != null,
+        trackName: imp.trackName,
+        carClass: imp.carClass,
+        car: imp.car,
+        type: imp.type,
+        owner: imp.ownerName,
+        sessionId: null,
+      };
+    }
+    const lap = await prisma.lap.findUnique({
+      where: { id: lapId },
+      select: {
+        id: true,
+        lapNumber: true,
+        lapTime: true,
+        isValid: true,
+        sector1: true,
+        sector2: true,
+        sector3: true,
+        hasTouch: true,
+        telemetryJson: true,
+        sessionId: true,
+        session: {
+          select: {
+            type: true,
+            car: true,
+            carClass: true,
+            startedAt: true,
+            trackId: true,
+            track: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!lap) return null;
+    return {
+      id: lap.id,
+      kind: "session",
+      lapNumber: lap.lapNumber,
+      lapTime: lap.lapTime,
+      isValid: lap.isValid,
+      sector1: lap.sector1,
+      sector2: lap.sector2,
+      sector3: lap.sector3,
+      hasTouch: !!lap.hasTouch,
+      hasTelemetry: lap.telemetryJson != null,
+      trackId: lap.session?.trackId ?? null,
+      trackName: lap.session?.track?.name ?? null,
+      carClass: lap.session?.carClass ?? null,
+      car: lap.session?.car ?? null,
+      type: lap.session?.type ?? null,
+      sessionId: lap.sessionId,
+      startedAt: lap.session?.startedAt ?? null,
+    };
+  } catch (e) {
+    pushLog(`[IPC ERRO] laps.meta: ${e.message}`);
+    return null;
+  }
 });
 
 // Top N voltas validas de OUTRAS sessoes na mesma pista (com telemetria).
@@ -1016,6 +1120,164 @@ ipcMain.handle("dashboard.data", async (_e, { trackId, windowDays } = {}) => {
     orderBy: { createdAt: "asc" },
   });
   return { laps };
+});
+
+// Analise de erros: agrega varias voltas da pista em N trechos (bins) por
+// distancia. Pra cada trecho devolve delta medio vs referencia, variancia,
+// frequencia de ABS/TC e velocidade minima. O renderer so desenha — toda a
+// agregacao pesada (parse de N telemetrias) acontece aqui.
+ipcMain.handle("errors.analyze", async (_e, { trackId, bins = 80 } = {}) => {
+  if (!prisma || !trackId) return null;
+  try {
+    const laps = await prisma.lap.findMany({
+      where: {
+        isValid: true,
+        NOT: { telemetryJson: null },
+        lapTime: { gt: 0 },
+        session: { trackId },
+      },
+      orderBy: { lapTime: "asc" },
+      take: 60,
+      select: {
+        id: true,
+        lapTime: true,
+        telemetryJson: true,
+        session: {
+          select: { carClass: true, track: { select: { name: true } } },
+        },
+      },
+    });
+    if (laps.length === 0) return null;
+
+    const ref = laps[0];
+    const refClass = ref.session?.carClass ?? null;
+    // So compara voltas da mesma classe do recordista (apples-to-apples).
+    const pool = laps
+      .filter((l) => (l.session?.carClass ?? null) === refClass)
+      .slice(0, 40);
+
+    const parse = (l) => {
+      try {
+        const s = JSON.parse(l.telemetryJson);
+        if (!Array.isArray(s) || s.length < 10) return null;
+        return s.slice().sort((a, b) => a.d - b.d);
+      } catch {
+        return null;
+      }
+    };
+
+    const refSamples = parse(ref);
+    if (!refSamples) return null;
+    const lapLength = refSamples[refSamples.length - 1].d;
+    if (lapLength <= 0) return null;
+
+    const N = Math.max(20, Math.min(160, bins | 0));
+    const binSize = lapLength / N;
+
+    const interp = (samples, d, key) => {
+      if (d <= samples[0].d) return samples[0][key];
+      const last = samples[samples.length - 1];
+      if (d >= last.d) return last[key];
+      let lo = 0;
+      let hi = samples.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (samples[mid].d <= d) lo = mid;
+        else hi = mid;
+      }
+      const a = samples[lo];
+      const b = samples[hi];
+      const span = b.d - a.d || 1;
+      return a[key] + ((d - a.d) / span) * (b[key] - a[key]);
+    };
+
+    // Referencia: tempo e posicao por trecho
+    const refBinTime = new Array(N);
+    const binPos = new Array(N);
+    const refMinSpeed = new Array(N).fill(Infinity);
+    for (let k = 0; k < N; k++) {
+      const t0 = interp(refSamples, k * binSize, "t");
+      const t1 = interp(refSamples, (k + 1) * binSize, "t");
+      refBinTime[k] = t1 - t0;
+      binPos[k] = {
+        x: interp(refSamples, (k + 0.5) * binSize, "x"),
+        z: interp(refSamples, (k + 0.5) * binSize, "z"),
+      };
+    }
+    for (const s of refSamples) {
+      const k = Math.min(N - 1, Math.max(0, Math.floor(s.d / binSize)));
+      if (s.v != null && s.v < refMinSpeed[k]) refMinSpeed[k] = s.v;
+    }
+
+    // Agregacao sobre o pool
+    const deltas = Array.from({ length: N }, () => []);
+    const absCount = new Array(N).fill(0);
+    const tcCount = new Array(N).fill(0);
+    const sampleCount = new Array(N).fill(0);
+    const minSpeedSum = new Array(N).fill(0);
+    const minSpeedN = new Array(N).fill(0);
+
+    for (const lap of pool) {
+      const ls = parse(lap);
+      if (!ls) continue;
+      for (let k = 0; k < N; k++) {
+        const t0 = interp(ls, k * binSize, "t");
+        const t1 = interp(ls, (k + 1) * binSize, "t");
+        if (t0 != null && t1 != null) {
+          deltas[k].push(t1 - t0 - refBinTime[k]);
+        }
+      }
+      const lapMin = new Array(N).fill(Infinity);
+      for (const s of ls) {
+        const k = Math.min(N - 1, Math.max(0, Math.floor(s.d / binSize)));
+        sampleCount[k]++;
+        if (s.abs) absCount[k]++;
+        if (s.tc) tcCount[k]++;
+        if (s.v != null && s.v < lapMin[k]) lapMin[k] = s.v;
+      }
+      for (let k = 0; k < N; k++) {
+        if (isFinite(lapMin[k])) {
+          minSpeedSum[k] += lapMin[k];
+          minSpeedN[k]++;
+        }
+      }
+    }
+
+    const mean = (a) =>
+      a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+    const std = (a) => {
+      if (a.length < 2) return 0;
+      const m = mean(a);
+      return Math.sqrt(mean(a.map((x) => (x - m) ** 2)));
+    };
+
+    const out = [];
+    for (let k = 0; k < N; k++) {
+      out.push({
+        x: binPos[k].x,
+        z: binPos[k].z,
+        distFrom: k * binSize,
+        distTo: (k + 1) * binSize,
+        avgDelta: mean(deltas[k]),
+        stdDelta: std(deltas[k]),
+        absFreq: sampleCount[k] ? absCount[k] / sampleCount[k] : 0,
+        tcFreq: sampleCount[k] ? tcCount[k] / sampleCount[k] : 0,
+        minSpeed: minSpeedN[k] ? minSpeedSum[k] / minSpeedN[k] : null,
+        refMinSpeed: isFinite(refMinSpeed[k]) ? refMinSpeed[k] : null,
+      });
+    }
+
+    return {
+      bins: out,
+      lapCount: pool.length,
+      refLapTime: ref.lapTime,
+      carClass: refClass,
+      trackName: ref.session?.track?.name ?? null,
+    };
+  } catch (e) {
+    pushLog(`[IPC ERRO] errors.analyze: ${e.message}`);
+    return null;
+  }
 });
 
 ipcMain.handle("stats.last7days", async () => {

@@ -15,7 +15,7 @@
  *   - inRealtime liga/desliga automaticamente quando dirigindo
  */
 
-const { BrowserWindow, ipcMain, screen } = require("electron");
+const { BrowserWindow, ipcMain, screen, globalShortcut } = require("electron");
 const path = require("node:path");
 
 const BUCKETS = 30; // micro-setores por volta. ~167m em pista de 5km
@@ -501,6 +501,44 @@ async function setWidget(id, partial) {
   return next[id];
 }
 
+// ── Hotkey global ──────────────────────────────────────
+// Atalho de teclado a nivel de sistema (funciona com o jogo em foco) que
+// inverte tires.showTemp ao vivo — destaca temperatura ou desgaste.
+
+let tireTempHotkey = null;
+
+function toggleTireTemp() {
+  const cfg = getCfg() || {};
+  const current = mergeWidgetConfig(cfg.overlay?.widgets);
+  const next = !current.tires.showTemp;
+  setWidget("tires", { showTemp: next });
+  pushLog(`[OVERLAY] hotkey → tires.showTemp = ${next}`);
+}
+
+// Registra (ou limpa) o atalho. Retorna { ok, key, error }.
+function registerTireTempHotkey(accelerator) {
+  if (tireTempHotkey) {
+    try {
+      globalShortcut.unregister(tireTempHotkey);
+    } catch {}
+    tireTempHotkey = null;
+  }
+  if (!accelerator) return { ok: true, key: null };
+  try {
+    const ok = globalShortcut.register(accelerator, toggleTireTemp);
+    if (ok) {
+      tireTempHotkey = accelerator;
+      pushLog(`[OVERLAY] hotkey de temperatura: ${accelerator}`);
+      return { ok: true, key: accelerator };
+    }
+    pushLog(`[OVERLAY] hotkey ${accelerator} indisponivel (em uso)`);
+    return { ok: false, key: null, error: "tecla em uso por outro app" };
+  } catch (e) {
+    pushLog(`[OVERLAY ERRO] hotkey: ${e.message}`);
+    return { ok: false, key: null, error: e.message };
+  }
+}
+
 function setEditMode(bool) {
   state.editMode = !!bool;
   // Garante janela viva ANTES de aplicar — se renderer crashou, o usuario
@@ -551,6 +589,23 @@ function init({ prisma: p, log, getConfig, setConfig, mainWindowEnv }) {
     refSource: state.refLap?.source ?? null,
     refOwner: state.refLap?.owner ?? null,
   }));
+  ipcMain.handle("overlay.getTireTempKey", () => {
+    return getCfg()?.overlay?.tireTempKey ?? null;
+  });
+  ipcMain.handle("overlay.setTireTempKey", async (_e, accelerator) => {
+    const res = registerTireTempHotkey(accelerator || null);
+    const cfg = getCfg() || {};
+    const overlay = {
+      ...(cfg.overlay || {}),
+      tireTempKey: res.ok ? res.key : null,
+    };
+    await setCfg({ overlay });
+    return res;
+  });
+
+  // Registra o hotkey salvo (se houver)
+  const savedKey = getCfg()?.overlay?.tireTempKey ?? null;
+  if (savedKey) registerTireTempHotkey(savedKey);
 
   // NAO cria a overlay window aqui. Quando o app sobe via auto-start no boot
   // do Windows, o DWM/compositor as vezes ainda nao esta pronto pra janelas
@@ -562,6 +617,12 @@ function init({ prisma: p, log, getConfig, setConfig, mainWindowEnv }) {
 }
 
 function shutdown() {
+  if (tireTempHotkey) {
+    try {
+      globalShortcut.unregister(tireTempHotkey);
+    } catch {}
+    tireTempHotkey = null;
+  }
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.destroy();
   }

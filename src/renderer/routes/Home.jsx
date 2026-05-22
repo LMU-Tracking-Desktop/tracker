@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import LapsTable from "../components/LapsTable.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import TrackSelect from "../components/TrackSelect.jsx";
+import TrackStats from "../components/TrackStats.jsx";
 import { formatLapTime } from "../lib/format.js";
 import { useLmuStatus } from "../lib/useLmuStatus.js";
 
@@ -579,6 +580,11 @@ export default function Home() {
               ))}
             </div>
           )}
+
+          {/* Analise estatistica da pista */}
+          <div style={{ padding: "0 var(--pad) var(--pad)" }}>
+            <TrackStats trackId={trackId} />
+          </div>
         </>
       )}
     </div>

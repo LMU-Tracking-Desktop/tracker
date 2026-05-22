@@ -82,7 +82,96 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
-function WidgetCard({ widget, def, onUpdate }) {
+// Converte um KeyboardEvent no formato de accelerator do Electron.
+// Retorna null pra teclas sozinhas de modificador ou nao suportadas.
+function eventToAccelerator(e) {
+  const k = e.key;
+  if (k === "Control" || k === "Shift" || k === "Alt" || k === "Meta")
+    return null;
+  const mods = [];
+  if (e.ctrlKey) mods.push("Ctrl");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Super");
+  let main = null;
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(k)) main = k;
+  else if (k.length === 1) main = k.toUpperCase();
+  else if (k === " ") main = "Space";
+  else {
+    const map = {
+      ArrowUp: "Up",
+      ArrowDown: "Down",
+      ArrowLeft: "Left",
+      ArrowRight: "Right",
+      Tab: "Tab",
+      Enter: "Return",
+    };
+    main = map[k] || null;
+  }
+  if (!main) return null;
+  return [...mods, main].join("+");
+}
+
+function KeyBinder({ value, onChange }) {
+  const [recording, setRecording] = useState(false);
+
+  useEffect(() => {
+    if (!recording) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        setRecording(false);
+        return;
+      }
+      const acc = eventToAccelerator(e);
+      if (acc) {
+        onChange(acc);
+        setRecording(false);
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [recording, onChange]);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <button
+        type="button"
+        className={recording ? "btn solid" : "btn"}
+        onClick={() => setRecording((r) => !r)}
+        style={{ minWidth: 150, fontSize: 10 }}
+      >
+        {recording
+          ? "PRESSIONE UMA TECLA..."
+          : value
+          ? value.toUpperCase()
+          : "DEFINIR TECLA"}
+      </button>
+      {value && !recording && (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => onChange(null)}
+          style={{ padding: "4px 8px", fontSize: 9 }}
+          title="Remover atalho"
+        >
+          LIMPAR
+        </button>
+      )}
+      {recording && (
+        <span
+          className="mono"
+          style={{ fontSize: 9, color: "var(--tx-3)", letterSpacing: "0.1em" }}
+        >
+          ESC PRA CANCELAR
+        </span>
+      )}
+    </div>
+  );
+}
+
+function WidgetCard({ widget, def, onUpdate, tireTempKey, onSetTireTempKey }) {
   const enabled = !!widget?.enabled;
   const sessions = widget?.sessions || {};
 
@@ -251,6 +340,9 @@ function WidgetCard({ widget, def, onUpdate }) {
                 marginTop: 4,
                 paddingTop: 10,
                 borderTop: "1px solid var(--bd-0)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
               }}
             >
               <Toggle
@@ -262,6 +354,24 @@ function WidgetCard({ widget, def, onUpdate }) {
                     : "DESTAQUE: DESGASTE (temperatura como sub-info)"
                 }
               />
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 6 }}
+              >
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.18em",
+                    color: "var(--tx-3)",
+                  }}
+                >
+                  TECLA PRA ALTERNAR DESTAQUE (FUNCIONA NO JOGO)
+                </span>
+                <KeyBinder
+                  value={tireTempKey}
+                  onChange={(acc) => onSetTireTempKey?.(acc)}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -278,14 +388,28 @@ export default function Overlays() {
     enabled: true,
     edit: false,
   });
+  const [tireTempKey, setTireTempKey] = useState(null);
 
   async function refresh() {
-    const [w, s] = await Promise.all([
+    const [w, s, k] = await Promise.all([
       window.api?.getOverlayWidgets?.(),
       window.api?.getOverlayState?.(),
+      window.api?.getOverlayTireTempKey?.(),
     ]);
     setWidgets(w || null);
     if (s) setOverlayState(s);
+    setTireTempKey(k ?? null);
+  }
+
+  async function updateTireTempKey(accelerator) {
+    const res = await window.api?.setOverlayTireTempKey?.(accelerator);
+    if (res?.ok) {
+      setTireTempKey(res.key);
+    } else if (res?.error) {
+      // Tecla recusada (em uso) — mantem o estado e avisa no console
+      console.warn("[overlay] hotkey:", res.error);
+      setTireTempKey(null);
+    }
   }
 
   useEffect(() => {
@@ -413,6 +537,8 @@ export default function Overlays() {
               widget={widgets?.[def.id]}
               def={def}
               onUpdate={update}
+              tireTempKey={tireTempKey}
+              onSetTireTempKey={updateTireTempKey}
             />
           ))}
         </div>

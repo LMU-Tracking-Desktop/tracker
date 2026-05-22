@@ -248,6 +248,7 @@ export default function Sessoes() {
                     <th>Carro</th>
                     <th>Classe</th>
                     <th>Tipo</th>
+                    <th className="num">Pos</th>
                     <th className="num">Voltas</th>
                     <th className="num">Melhor</th>
                     <th className="num">Média</th>
@@ -278,6 +279,22 @@ export default function Sessoes() {
                       <td style={{ color: "var(--tx-2)" }}>{s.carClass}</td>
                       <td>
                         <TypeBadge type={s.type} />
+                      </td>
+                      <td
+                        className="num"
+                        style={{
+                          color:
+                            s.finalPosition == null
+                              ? "var(--tx-3)"
+                              : s.finalPosition <= 3
+                              ? "var(--accent)"
+                              : "var(--tx-1)",
+                          fontWeight: s.finalPosition != null ? 600 : 400,
+                        }}
+                      >
+                        {s.finalPosition != null
+                          ? `P${String(s.finalPosition).padStart(2, "0")}`
+                          : "—"}
                       </td>
                       <td className="num" style={{ color: "var(--tx-1)" }}>
                         {s._count?.laps ?? 0}

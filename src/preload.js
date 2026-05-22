@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("api", {
   getSessionDetail: (sessionId) =>
     ipcRenderer.invoke("sessions.detail", sessionId),
   getLapTelemetry: (lapId) => ipcRenderer.invoke("laps.telemetry", lapId),
+  getLapMeta: (lapId) => ipcRenderer.invoke("laps.meta", lapId),
   getTopLapsByTrack: (filter) =>
     ipcRenderer.invoke("laps.topByTrack", filter),
   getBestSectorsForTrack: (filter) =>
@@ -38,6 +39,7 @@ contextBridge.exposeInMainWorld("api", {
   getFilterOptions: (ctx) => ipcRenderer.invoke("filters.options", ctx),
   getListagem: (filter) => ipcRenderer.invoke("listagem.data", filter),
   getDashboard: (filter) => ipcRenderer.invoke("dashboard.data", filter),
+  analyzeErrors: (filter) => ipcRenderer.invoke("errors.analyze", filter),
   confirm: (opts) => ipcRenderer.invoke("ui.confirm", opts),
   getConfig: () => ipcRenderer.invoke("config.get"),
   setConfig: (partial) => ipcRenderer.invoke("config.set", partial),
@@ -54,6 +56,9 @@ contextBridge.exposeInMainWorld("api", {
   getOverlayWidgets: () => ipcRenderer.invoke("overlay.getWidgets"),
   setOverlayWidget: (id, partial) =>
     ipcRenderer.invoke("overlay.setWidget", { id, partial }),
+  getOverlayTireTempKey: () => ipcRenderer.invoke("overlay.getTireTempKey"),
+  setOverlayTireTempKey: (accelerator) =>
+    ipcRenderer.invoke("overlay.setTireTempKey", accelerator),
 
   // Renderer da overlay window (rota #/overlay).
   onOverlayTick: (cb) => {

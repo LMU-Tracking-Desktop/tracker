@@ -10,6 +10,7 @@ import Sessoes from "./routes/Sessoes.jsx";
 import SessionDetail from "./routes/SessionDetail.jsx";
 import Listagem from "./routes/Listagem.jsx";
 import Dashboard from "./routes/Dashboard.jsx";
+import Erros from "./routes/Erros.jsx";
 import Settings from "./routes/Settings.jsx";
 import Replay from "./routes/Replay.jsx";
 import Telemetria from "./routes/Telemetria.jsx";
@@ -37,6 +38,7 @@ createRoot(document.getElementById("root")).render(
             element={<Telemetria />}
           />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/erros" element={<Erros />} />
           <Route path="/overlays" element={<Overlays />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />

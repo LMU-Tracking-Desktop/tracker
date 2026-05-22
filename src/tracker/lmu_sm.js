@@ -125,10 +125,13 @@ const TI = {
   mWheelArrayBase: 848, // TelemWheelV01[4] apos mExpansion[20]
 };
 
-// TelemWheelV01 — mWear + mTemperature.
+// TelemWheelV01 — mWear + temperatura do carcass.
 const TW = {
-  mTemperature: 128, // double[3] Kelvin — left/center/right
   mWear: 152, // double (apos 19 doubles)
+  // mTireCarcassTemperature: temp do carcass (Kelvin), estavel — e a que o
+  // HUD do jogo mostra. NAO usar mTemperature[3] (offset 128): aquela e a
+  // temp de SUPERFICIE, que oscila muito (sobe em curva, cai na reta).
+  mTireCarcassTemp: 204, // double Kelvin
 };
 
 // ── Helpers ────────────────────────────────────────────
@@ -222,15 +225,12 @@ function decodeTelemInfo(buf, idx) {
   const wheelBase = base + TI.mWheelArrayBase;
   const mWheels = [0, 1, 2, 3].map((wi) => {
     const wb = wheelBase + wi * TELEM_WHEEL_SIZE;
-    // mTemperature[3] = left/center/right em Kelvin. Media convertida pra
-    // Celsius. Valores 0 = sem dado (carro nao carregado), mantemos 0.
-    const t0 = buf.readDoubleLE(wb + TW.mTemperature);
-    const t1 = buf.readDoubleLE(wb + TW.mTemperature + 8);
-    const t2 = buf.readDoubleLE(wb + TW.mTemperature + 16);
-    const avgK = (t0 + t1 + t2) / 3;
+    // Temp do carcass em Kelvin → Celsius. Estavel (faixa ~80C), igual ao
+    // HUD do jogo. Valores baixos (<100K) = sem dado, mantemos 0.
+    const carcassK = buf.readDoubleLE(wb + TW.mTireCarcassTemp);
     return {
       mWear: buf.readDoubleLE(wb + TW.mWear),
-      mTempC: avgK > 100 ? avgK - 273.15 : 0,
+      mTempC: carcassK > 100 ? carcassK - 273.15 : 0,
     };
   });
   return {
