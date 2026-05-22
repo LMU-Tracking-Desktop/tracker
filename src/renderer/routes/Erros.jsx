@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import TrackSelect from "../components/TrackSelect.jsx";
 import ErrorMap from "../components/ErrorMap.jsx";
+import { Field } from "../components/Field.jsx";
 import { formatLapTime } from "../lib/format.js";
 
 const LAYERS = [
@@ -71,6 +72,7 @@ const fmtDist = (b) =>
 export default function Erros() {
   const [tracks, setTracks] = useState([]);
   const [trackId, setTrackId] = useState(null);
+  const [carClass, setCarClass] = useState(null); // null = auto (mais rapida)
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [layer, setLayer] = useState("delta");
@@ -87,6 +89,11 @@ export default function Erros() {
     })();
   }, []);
 
+  const changeTrack = (id) => {
+    setTrackId(id);
+    setCarClass(null); // pista nova → volta pro auto
+  };
+
   useEffect(() => {
     if (!trackId) {
       setData(null);
@@ -97,7 +104,7 @@ export default function Erros() {
       setLoading(true);
       setHoveredIndex(null);
       try {
-        const d = await window.api?.analyzeErrors?.({ trackId });
+        const d = await window.api?.analyzeErrors?.({ trackId, carClass });
         if (!cancelled) setData(d);
       } finally {
         if (!cancelled) setLoading(false);
@@ -106,7 +113,7 @@ export default function Erros() {
     return () => {
       cancelled = true;
     };
-  }, [trackId]);
+  }, [trackId, carClass]);
 
   // Top trechos piores na camada atual
   const topZones = useMemo(() => {
@@ -151,17 +158,31 @@ export default function Erros() {
     >
       <PageHeader crumbs={[{ label: "ERROS" }, { label: "MAPA DA PISTA" }]} />
 
-      {/* Track picker + layer toggle */}
+      {/* Track picker + class + layer toggle */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 300px) 1fr",
+          gridTemplateColumns: "minmax(0, 260px) minmax(0, 160px) 1fr",
           gap: "var(--gap)",
           padding: "var(--pad)",
           alignItems: "end",
         }}
       >
-        <TrackSelect tracks={tracks} value={trackId} onChange={setTrackId} />
+        <TrackSelect tracks={tracks} value={trackId} onChange={changeTrack} />
+        <Field label="Classe">
+          <select
+            className="select"
+            value={carClass ?? data?.carClass ?? ""}
+            onChange={(e) => setCarClass(e.target.value || null)}
+            disabled={!data || (data.availableClasses?.length ?? 0) <= 1}
+          >
+            {(data?.availableClasses || []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </Field>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {LAYERS.map((l) => {
             const active = layer === l.id;

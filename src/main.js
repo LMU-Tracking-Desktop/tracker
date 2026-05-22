@@ -147,6 +147,32 @@ ipcMain.handle("cars.list", async () => {
   return prisma.car.findMany({ select: { name: true, imageUrl: true } });
 });
 
+// Classes de carro que ja correram numa pista, ordenadas da mais recente
+// pra mais antiga. Usado pelos seletores de classe nas telas de analise.
+ipcMain.handle("tracks.classes", async (_e, trackId) => {
+  if (!prisma || !trackId) return [];
+  try {
+    const sessions = await prisma.session.findMany({
+      where: { trackId },
+      select: { carClass: true },
+      orderBy: { startedAt: "desc" },
+    });
+    const seen = new Set();
+    const out = [];
+    for (const s of sessions) {
+      const c = s.carClass;
+      if (c && !seen.has(c)) {
+        seen.add(c);
+        out.push(c);
+      }
+    }
+    return out;
+  } catch (e) {
+    pushLog(`[IPC ERRO] tracks.classes: ${e.message}`);
+    return [];
+  }
+});
+
 // Resumo por pista pra tela /pistas — uma linha por pista com agregados.
 // Para evitar N+1, puxa sessions + laps uma vez e agrega em memoria. Como
 // e um app pessoal com ate ~30 pistas e poucos milhares de voltas, e
@@ -262,6 +288,7 @@ ipcMain.handle("sessions.list", async (_e, filter = {}) => {
   const where = {
     trackId: filter.trackId ?? undefined,
     type: filter.type ?? undefined,
+    carClass: filter.carClass ?? undefined,
   };
   const [sessions, total] = await Promise.all([
     prisma.session.findMany({
@@ -1126,15 +1153,32 @@ ipcMain.handle("dashboard.data", async (_e, { trackId, windowDays } = {}) => {
 // distancia. Pra cada trecho devolve delta medio vs referencia, variancia,
 // frequencia de ABS/TC e velocidade minima. O renderer so desenha — toda a
 // agregacao pesada (parse de N telemetrias) acontece aqui.
-ipcMain.handle("errors.analyze", async (_e, { trackId, bins = 80 } = {}) => {
+ipcMain.handle(
+  "errors.analyze",
+  async (_e, { trackId, carClass, bins = 80 } = {}) => {
   if (!prisma || !trackId) return null;
   try {
+    // Classes disponiveis na pista (pro seletor da tela)
+    const classRows = await prisma.session.findMany({
+      where: { trackId },
+      select: { carClass: true },
+      orderBy: { startedAt: "desc" },
+    });
+    const availableClasses = [];
+    const seenCls = new Set();
+    for (const r of classRows) {
+      if (r.carClass && !seenCls.has(r.carClass)) {
+        seenCls.add(r.carClass);
+        availableClasses.push(r.carClass);
+      }
+    }
+
     const laps = await prisma.lap.findMany({
       where: {
         isValid: true,
         NOT: { telemetryJson: null },
         lapTime: { gt: 0 },
-        session: { trackId },
+        session: { trackId, ...(carClass ? { carClass } : {}) },
       },
       orderBy: { lapTime: "asc" },
       take: 60,
@@ -1147,11 +1191,14 @@ ipcMain.handle("errors.analyze", async (_e, { trackId, bins = 80 } = {}) => {
         },
       },
     });
-    if (laps.length === 0) return null;
+    if (laps.length === 0) {
+      return { bins: [], availableClasses, carClass: carClass ?? null, lapCount: 0 };
+    }
 
     const ref = laps[0];
     const refClass = ref.session?.carClass ?? null;
     // So compara voltas da mesma classe do recordista (apples-to-apples).
+    // Se carClass foi passado, a query ja filtrou — o filtro abaixo e no-op.
     const pool = laps
       .filter((l) => (l.session?.carClass ?? null) === refClass)
       .slice(0, 40);
@@ -1273,12 +1320,14 @@ ipcMain.handle("errors.analyze", async (_e, { trackId, bins = 80 } = {}) => {
       refLapTime: ref.lapTime,
       carClass: refClass,
       trackName: ref.session?.track?.name ?? null,
+      availableClasses,
     };
   } catch (e) {
     pushLog(`[IPC ERRO] errors.analyze: ${e.message}`);
     return null;
   }
-});
+  }
+);
 
 ipcMain.handle("stats.last7days", async () => {
   if (!prisma) return null;

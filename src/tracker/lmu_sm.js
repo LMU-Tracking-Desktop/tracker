@@ -125,13 +125,15 @@ const TI = {
   mWheelArrayBase: 848, // TelemWheelV01[4] apos mExpansion[20]
 };
 
-// TelemWheelV01 — mWear + temperatura do carcass.
+// TelemWheelV01 — mWear + temperatura interna do pneu.
 const TW = {
   mWear: 152, // double (apos 19 doubles)
-  // mTireCarcassTemperature: temp do carcass (Kelvin), estavel — e a que o
-  // HUD do jogo mostra. NAO usar mTemperature[3] (offset 128): aquela e a
-  // temp de SUPERFICIE, que oscila muito (sobe em curva, cai na reta).
-  mTireCarcassTemp: 204, // double Kelvin
+  // 3 camadas de temperatura disponiveis:
+  //   mTemperature[3]        (offset 128) — SUPERFICIE, oscila demais
+  //   mTireCarcassTemp       (offset 204) — CARCASS, estavel mas ~1.5C alto
+  //   mTireInnerLayerTemp[3] (offset 212) — camada interna de borracha:
+  //     estavel E bate com o numero do HUD do jogo. Usamos esta.
+  mTireInnerLayerTemp: 212, // double[3] Kelvin — left/center/right
 };
 
 // ── Helpers ────────────────────────────────────────────
@@ -225,12 +227,15 @@ function decodeTelemInfo(buf, idx) {
   const wheelBase = base + TI.mWheelArrayBase;
   const mWheels = [0, 1, 2, 3].map((wi) => {
     const wb = wheelBase + wi * TELEM_WHEEL_SIZE;
-    // Temp do carcass em Kelvin → Celsius. Estavel (faixa ~80C), igual ao
-    // HUD do jogo. Valores baixos (<100K) = sem dado, mantemos 0.
-    const carcassK = buf.readDoubleLE(wb + TW.mTireCarcassTemp);
+    // Media das 3 leituras da camada interna (left/center/right) em Kelvin
+    // → Celsius. Estavel e igual ao HUD. Valores <100K = sem dado → 0.
+    const t0 = buf.readDoubleLE(wb + TW.mTireInnerLayerTemp);
+    const t1 = buf.readDoubleLE(wb + TW.mTireInnerLayerTemp + 8);
+    const t2 = buf.readDoubleLE(wb + TW.mTireInnerLayerTemp + 16);
+    const avgK = (t0 + t1 + t2) / 3;
     return {
       mWear: buf.readDoubleLE(wb + TW.mWear),
-      mTempC: carcassK > 100 ? carcassK - 273.15 : 0,
+      mTempC: avgK > 100 ? avgK - 273.15 : 0,
     };
   });
   return {

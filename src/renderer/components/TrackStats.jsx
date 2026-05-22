@@ -157,6 +157,7 @@ export default function TrackStats({ trackId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [outlierPct, setOutlierPct] = useState(7);
+  const [carClass, setCarClass] = useState(null);
 
   useEffect(() => {
     window.api?.getConfig?.().then((c) => {
@@ -184,9 +185,35 @@ export default function TrackStats({ trackId }) {
     };
   }, [trackId, windowDays]);
 
+  // Classes presentes nos dados — pro seletor
+  const availableClasses = useMemo(() => {
+    if (!data?.laps) return [];
+    const seen = new Set();
+    const out = [];
+    for (const l of data.laps) {
+      const c = l.session?.carClass;
+      if (c && !seen.has(c)) {
+        seen.add(c);
+        out.push(c);
+      }
+    }
+    return out.sort();
+  }, [data]);
+
+  // Mantem a classe selecionada valida; senao pega a primeira
+  useEffect(() => {
+    setCarClass((cur) =>
+      cur && availableClasses.includes(cur) ? cur : availableClasses[0] || null
+    );
+  }, [availableClasses]);
+
   const analysis = useMemo(() => {
     if (!data || !data.laps) return null;
-    const laps = data.laps;
+    // Misturar classes distorce ritmo/consistencia — analisa uma por vez.
+    const laps = carClass
+      ? data.laps.filter((l) => l.session?.carClass === carClass)
+      : data.laps;
+    if (laps.length === 0) return null;
     const outlierSet = computeOutlierSet(laps, outlierPct);
     const kept = laps.filter((l) => !outlierSet.has(l.id));
     const validTimes = kept.filter((l) => l.isValid).map((l) => l.lapTime);
@@ -207,7 +234,7 @@ export default function TrackStats({ trackId }) {
       byType: computeTypeStats(kept),
       byCar: computeCarStats(kept),
     };
-  }, [data, outlierPct]);
+  }, [data, outlierPct, carClass]);
 
   const emptyBox = (label) => (
     <div
@@ -250,7 +277,23 @@ export default function TrackStats({ trackId }) {
         >
           Análise da Pista
         </span>
-        <WindowSegmented value={windowDays} onChange={setWindowDays} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {availableClasses.length > 1 && (
+            <select
+              className="select"
+              value={carClass ?? ""}
+              onChange={(e) => setCarClass(e.target.value || null)}
+              style={{ width: "auto", padding: "5px 8px", fontSize: 11 }}
+            >
+              {availableClasses.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          )}
+          <WindowSegmented value={windowDays} onChange={setWindowDays} />
+        </div>
       </div>
 
       {loading ? (

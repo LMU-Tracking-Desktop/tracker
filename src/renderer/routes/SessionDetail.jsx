@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import TypeBadge from "../components/TypeBadge.jsx";
 import SessionLapsTable from "../components/SessionLapsTable.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -495,22 +495,8 @@ function ClassPill({ cls }) {
 export default function SessionDetail() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const selectedLapId = searchParams.get("lap");
-  const referenceLapId = searchParams.get("ref");
-  const setSelectedLapId = (id) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (id) next.set("lap", id);
-        else next.delete("lap");
-        return next;
-      },
-      { replace: true }
-    );
-  };
   const [outlierPct, setOutlierPct] = useState(7);
   const [bestSectors, setBestSectors] = useState(null);
 
@@ -519,17 +505,6 @@ export default function SessionDetail() {
       if (c) setOutlierPct(c.outlier_threshold_pct ?? 7);
     });
   }, []);
-
-  useEffect(() => {
-    if (!data?.laps || selectedLapId) return;
-    const withTelemetry = data.laps.filter((l) => l.hasTelemetry && l.isValid);
-    if (withTelemetry.length === 0) return;
-    const best = withTelemetry.reduce((best, l) =>
-      !best || l.lapTime < best.lapTime ? l : best
-    );
-    setSelectedLapId(best.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, selectedLapId]);
 
   const handleDeleteLap = async (lapId) => {
     const done = await window.api.deleteLap(lapId);
@@ -685,15 +660,6 @@ export default function SessionDetail() {
   const finalTyre =
     [...laps].reverse().find((l) => l.tyreWearAvg != null)?.tyreWearAvg ?? null;
   const hasPosition = laps.some((l) => l.position != null);
-  const hasTelemetry = laps.some((l) => l.hasTelemetry);
-
-  const goTelemetry = () => {
-    const q = [];
-    if (selectedLapId) q.push(`lap=${encodeURIComponent(selectedLapId)}`);
-    if (referenceLapId) q.push(`ref=${encodeURIComponent(referenceLapId)}`);
-    const qs = q.length ? `?${q.join("&")}` : "";
-    navigate(`/sessoes/${sessionId}/telemetria${qs}`);
-  };
 
   return (
     <div
@@ -709,19 +675,6 @@ export default function SessionDetail() {
           { label: "SESSÕES", onClick: () => navigate("/sessoes") },
           { label: session.track.name },
         ]}
-        actions={
-          <div style={{ display: "flex", gap: 6 }}>
-            {hasTelemetry && (
-              <button
-                type="button"
-                className="btn solid"
-                onClick={goTelemetry}
-              >
-                VER GRÁFICOS →
-              </button>
-            )}
-          </div>
-        }
       />
 
       {/* Header card: info + 4 stats */}

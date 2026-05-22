@@ -117,6 +117,7 @@ export default function LapPickerModal({
   mode,
   title,
   trackId,
+  carClass,
   sessionLaps = [],
   otherLaps = [],
   importedLaps = [],
@@ -158,13 +159,14 @@ export default function LapPickerModal({
     if (open && !tab) setTab(hasSessionNav ? "sessions" : "session");
   }, [open, tab, hasSessionNav]);
 
-  // Carrega sessoes da pista quando a aba abre pela primeira vez
+  // Carrega sessoes da pista (filtradas pela classe) quando a aba abre.
+  // Re-busca se trackId/carClass mudarem.
   useEffect(() => {
-    if (tab !== "sessions" || !trackId || sessionList) return;
+    if (tab !== "sessions" || !trackId) return;
     let cancelled = false;
     setLoadingNav(true);
     window.api
-      ?.listSessions?.({ trackId, pageSize: 100 })
+      ?.listSessions?.({ trackId, carClass: carClass || null, pageSize: 100 })
       .then((res) => {
         if (cancelled) return;
         setSessionList(res?.sessions || []);
@@ -176,7 +178,7 @@ export default function LapPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [tab, trackId, sessionList]);
+  }, [tab, trackId, carClass]);
 
   const openNavSession = async (sid) => {
     setNavSessionId(sid);

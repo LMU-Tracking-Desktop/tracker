@@ -14,6 +14,7 @@ import LapPickerModal from "../components/LapPickerModal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SegmentAnalysisModal from "../components/SegmentAnalysisModal.jsx";
 import TrackSelect from "../components/TrackSelect.jsx";
+import { Field } from "../components/Field.jsx";
 import {
   downsample,
   distanceAtTime,
@@ -179,6 +180,8 @@ export default function Dashboard() {
 
   const [tracks, setTracks] = useState([]);
   const [trackId, setTrackId] = useState(null);
+  const [trackClasses, setTrackClasses] = useState([]);
+  const [carClass, setCarClass] = useState(null);
 
   const lapAId = searchParams.get("a");
   const lapBId = searchParams.get("b");
@@ -230,6 +233,7 @@ export default function Dashboard() {
           ? cache.trackId
           : null;
       setTrackId(cachedTrack || last || null);
+      if (cache.carClass) setCarClass(cache.carClass);
       // Restaura voltas do cache se a URL nao trouxe nenhuma
       if (!lapAId && !lapBId && (cache.a || cache.b)) {
         setSearchParams(
@@ -250,19 +254,38 @@ export default function Dashboard() {
   // Persiste configuracao a cada mudanca
   useEffect(() => {
     if (!cacheReady.current) return;
-    saveCache({ trackId, a: lapAId, b: lapBId });
-  }, [trackId, lapAId, lapBId]);
+    saveCache({ trackId, carClass, a: lapAId, b: lapBId });
+  }, [trackId, carClass, lapAId, lapBId]);
+
+  // Classes da pista (pro seletor). Ao trocar de pista, escolhe a classe
+  // do cache se ainda valida, senao a mais recente.
+  useEffect(() => {
+    if (!trackId) {
+      setTrackClasses([]);
+      return;
+    }
+    let cancelled = false;
+    window.api?.getTrackClasses?.(trackId).then((list) => {
+      if (cancelled) return;
+      const classes = list || [];
+      setTrackClasses(classes);
+      setCarClass((cur) =>
+        cur && classes.includes(cur) ? cur : classes[0] || null
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trackId]);
 
   const trackName = useMemo(
     () => tracks.find((t) => t.id === trackId)?.name ?? null,
     [tracks, trackId]
   );
 
-  // Trocar de pista limpa as voltas escolhidas (sao de outra pista).
-  // Limpa as duas numa unica chamada — duas chamadas separadas de
-  // setSearchParams recebem o mesmo prev e a segunda sobrescreve a primeira.
-  const changeTrack = (id) => {
-    setTrackId(id);
+  // Limpa as voltas escolhidas. Numa unica chamada de setSearchParams —
+  // chamadas separadas recebem o mesmo prev e a segunda sobrescreve.
+  const clearLaps = () => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -274,6 +297,19 @@ export default function Dashboard() {
     );
   };
 
+  // Trocar de pista: limpa voltas e reseta classe (o effect re-define).
+  const changeTrack = (id) => {
+    setTrackId(id);
+    setCarClass(null);
+    clearLaps();
+  };
+
+  // Trocar de classe: as voltas escolhidas eram de outra classe.
+  const changeClass = (cls) => {
+    setCarClass(cls || null);
+    clearLaps();
+  };
+
   // Pool de voltas pro picker (abas melhores/S1-S3): top da pista + imports
   useEffect(() => {
     if (!trackId) {
@@ -281,9 +317,9 @@ export default function Dashboard() {
       return;
     }
     window.api
-      ?.getTopLapsByTrack?.({ trackId, limit: 30 })
+      ?.getTopLapsByTrack?.({ trackId, carClass: carClass || undefined, limit: 30 })
       .then((r) => setOtherLaps(r || []));
-  }, [trackId]);
+  }, [trackId, carClass]);
 
   const loadImported = () => {
     if (!trackName) {
@@ -291,13 +327,13 @@ export default function Dashboard() {
       return;
     }
     window.api
-      ?.listImportsForTrack?.({ trackName })
+      ?.listImportsForTrack?.({ trackName, carClass: carClass || undefined })
       .then((r) => setImportedLaps(r || []));
   };
   useEffect(() => {
     loadImported();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackName]);
+  }, [trackName, carClass]);
 
   // Metadata + telemetria da volta A
   useEffect(() => {
@@ -504,17 +540,32 @@ export default function Dashboard() {
         }
       />
 
-      {/* Track picker + lap pickers */}
+      {/* Track picker + classe + lap pickers */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 300px) 1fr 1fr",
+          gridTemplateColumns: "minmax(0, 240px) minmax(0, 140px) 1fr 1fr",
           gap: "var(--gap)",
           padding: "var(--pad)",
           alignItems: "end",
         }}
       >
         <TrackSelect tracks={tracks} value={trackId} onChange={changeTrack} />
+        <Field label="Classe">
+          <select
+            className="select"
+            value={carClass ?? ""}
+            onChange={(e) => changeClass(e.target.value)}
+            disabled={trackClasses.length <= 1}
+          >
+            {trackClasses.length === 0 && <option value="">—</option>}
+            {trackClasses.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </Field>
         <LapPickerButton
           label="Volta A"
           onClick={() => trackId && setPickerMode("a")}
@@ -924,6 +975,7 @@ export default function Dashboard() {
         mode={pickerMode === "b" ? "reference" : "primary"}
         title={pickerMode === "b" ? "Escolher Volta B" : "Escolher Volta A"}
         trackId={trackId}
+        carClass={carClass}
         sessionLaps={[]}
         otherLaps={otherLaps}
         importedLaps={importedLaps}
