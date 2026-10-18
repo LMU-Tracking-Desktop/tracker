@@ -7,6 +7,7 @@ const ITEMS = [
   { to: "/listagem", label: "LISTAGEM" },
   { to: "/sessoes", label: "SESSOES" },
   { to: "/dashboard", label: "ANÁLISE" },
+  { to: "/coach", label: "COACH" },
   { to: "/erros", label: "ERROS" },
   { to: "/overlays", label: "OVERLAYS" },
   { to: "/logs", label: "LOGS" },

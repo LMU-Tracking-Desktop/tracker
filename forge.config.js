@@ -50,6 +50,19 @@ module.exports = {
     ],
   },
   rebuildConfig: {},
+  // `npm run publish` (rodado pelo .github/workflows/release.yml ao dar push
+  // de uma tag vX.Y.Z) sobe Setup.exe + .nupkg + RELEASES pro release.
+  // Os 3 sao necessarios pro auto-update (src/updater.js) via Squirrel.
+  publishers: [
+    {
+      name: "@electron-forge/publisher-github",
+      config: {
+        repository: { owner: "LMU-Tracking-Desktop", name: "tracker" },
+        prerelease: false,
+        draft: false,
+      },
+    },
+  ],
   makers: [
     {
       name: "@electron-forge/maker-squirrel",

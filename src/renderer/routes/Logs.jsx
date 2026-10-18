@@ -170,6 +170,14 @@ export default function Logs() {
               />{" "}
               {lmuConnected ? "STREAMING" : "OFFLINE"}
             </span>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => window.api?.openLogsFolder?.()}
+              title="Abre a pasta com tracker.log — mande esse arquivo quando reportar um problema"
+            >
+              ABRIR ARQUIVO DE LOG
+            </button>
           </div>
         }
       />

@@ -1,0 +1,39 @@
+# Gera e publica o release quando uma tag vX.Y.Z e enviada:
+#   1. bump "version" no package.json (ex: 1.0.35)
+#   2. git commit + git tag v1.0.35 + git push --follow-tags
+# O workflow builda no Windows e anexa Setup.exe, .nupkg e RELEASES ao
+# release. Os apps instalados detectam a versao nova em ate 1h (src/updater.js).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Confere tag x package.json
+        shell: bash
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME nao bate com package.json ($PKG)"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

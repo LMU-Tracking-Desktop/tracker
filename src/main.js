@@ -8,6 +8,7 @@ const {
   nativeImage,
   protocol,
   net,
+  shell,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -17,6 +18,8 @@ const { startTracker } = require("./tracker/tracker.js");
 const { createPrisma } = require("./db/client.js");
 const { runMigrations } = require("./db/migrate.js");
 const overlay = require("./overlay/overlay.js");
+const updater = require("./updater.js");
+const { analyzeCorners } = require("./analysis/coach.js");
 
 if (require("electron-squirrel-startup")) {
   app.quit();
@@ -104,7 +107,51 @@ function resolveAssetPath(relativePath) {
   return candidates[0];
 }
 
+// Log tambem vai pra %APPDATA%\lmu-desktop\logs\tracker.log, pra usuario
+// conseguir mandar o arquivo quando algo der errado (o buffer em memoria
+// some ao fechar o app). Rotaciona em 5MB mantendo 1 arquivo antigo.
+const LOG_FILE_MAX_BYTES = 5 * 1024 * 1024;
+let logFilePath = null;
+let logFileBytes = 0;
+
+function getLogFilePath() {
+  if (logFilePath) return logFilePath;
+  try {
+    const dir = path.join(app.getPath("userData"), "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    logFilePath = path.join(dir, "tracker.log");
+    logFileBytes = fs.existsSync(logFilePath) ? fs.statSync(logFilePath).size : 0;
+  } catch {
+    logFilePath = null;
+  }
+  return logFilePath;
+}
+
+function writeLogFile(line) {
+  const file = getLogFilePath();
+  if (!file) return;
+  try {
+    if (logFileBytes > LOG_FILE_MAX_BYTES) {
+      fs.renameSync(file, `${file}.1`);
+      logFileBytes = 0;
+    }
+    const stamped = `${new Date().toISOString()} ${line}\n`;
+    fs.appendFileSync(file, stamped);
+    logFileBytes += Buffer.byteLength(stamped);
+  } catch {
+    // disco cheio / sem permissao: segue so com o buffer em memoria
+  }
+}
+
+ipcMain.handle("logs.openFolder", async () => {
+  const file = getLogFilePath();
+  if (!file) return false;
+  shell.showItemInFolder(file);
+  return true;
+});
+
 function pushLog(line) {
+  writeLogFile(line);
   logBuffer.push(line);
   if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -910,6 +957,33 @@ ipcMain.handle("config.get", async () => ({ ...lastConfig }));
 
 ipcMain.handle("app.version", async () => app.getVersion());
 
+// ── Auto-update ─────────────────────────────────────────
+
+ipcMain.handle("update.getState", () => updater.getState());
+ipcMain.handle("update.check", () => updater.check());
+ipcMain.handle("update.install", () => {
+  // Sem isso o handler de "close" da mainWindow cancela o fechamento
+  // (manda pra tray) e o quitAndInstall nunca completa.
+  isQuitting = true;
+  return updater.install();
+});
+
+function onUpdateState(state) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-state", state);
+  }
+  if (state.status === "downloaded") {
+    rebuildTrayMenu();
+    if (tray && process.platform === "win32") {
+      tray.displayBalloon({
+        title: "Atualização pronta",
+        content: `Versão ${state.version ?? "nova"} baixada. Reinicie pela tray ou em Settings quando quiser.`,
+        iconType: "info",
+      });
+    }
+  }
+}
+
 // Auto-start (Windows registry HKCU Run). Fonte de verdade e o estado do
 // SO — nao duplicamos no config.json. Em vez de confiar so em
 // setLoginItemSettings (que com Squirrel as vezes deixa a entrada "presa"
@@ -1329,6 +1403,76 @@ ipcMain.handle(
   }
 );
 
+// Coach por curva — ver src/analysis/coach.js. Usa as voltas mais RECENTES
+// (habito atual), do mesmo carro: ponto de freada muda de carro pra carro
+// mesmo dentro da classe.
+ipcMain.handle("coach.analyze", async (_e, { trackId, carClass, car } = {}) => {
+  if (!prisma || !trackId) return null;
+  try {
+    const rows = await prisma.lap.findMany({
+      where: {
+        isValid: true,
+        lapTime: { gt: 0 },
+        NOT: { telemetryJson: null },
+        session: { trackId },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { session: { select: { car: true, carClass: true } } },
+    });
+    if (rows.length === 0) {
+      return { corners: [], lapCount: 0, availableClasses: [], availableCars: [] };
+    }
+
+    // Opcoes de filtro, na ordem do mais recente
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+    const availableClasses = uniq(rows.map((r) => r.session.carClass));
+    const cls = carClass && availableClasses.includes(carClass) ? carClass : availableClasses[0];
+    const availableCars = uniq(
+      rows.filter((r) => r.session.carClass === cls).map((r) => r.session.car)
+    );
+    const carName = car && availableCars.includes(car) ? car : availableCars[0];
+
+    const laps = await prisma.lap.findMany({
+      where: {
+        isValid: true,
+        lapTime: { gt: 0 },
+        NOT: { telemetryJson: null },
+        session: { trackId, carClass: cls, car: carName },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 80,
+      select: { id: true, lapTime: true, telemetryJson: true },
+    });
+
+    // Mesmo corte de outlier das outras telas (Settings → Outlier threshold)
+    const pctCut = lastConfig.outlier_threshold_pct ?? 7;
+    const fastest = Math.min(...laps.map((l) => l.lapTime));
+    const parsed = [];
+    for (const l of laps) {
+      if (pctCut > 0 && l.lapTime > fastest * (1 + pctCut / 100)) continue;
+      try {
+        const s = JSON.parse(l.telemetryJson);
+        if (!Array.isArray(s)) continue;
+        parsed.push({ id: l.id, lapTime: l.lapTime, samples: s.slice().sort((a, b) => a.d - b.d) });
+      } catch {
+        // telemetria corrompida: ignora a volta
+      }
+    }
+
+    const result = analyzeCorners(parsed);
+    return {
+      ...result,
+      carClass: cls,
+      car: carName,
+      availableClasses,
+      availableCars,
+    };
+  } catch (e) {
+    pushLog(`[IPC ERRO] coach.analyze: ${e.message}`);
+    return null;
+  }
+});
+
 ipcMain.handle("stats.last7days", async () => {
   if (!prisma) return null;
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -1401,7 +1545,19 @@ function createTray() {
 
   tray = new Tray(trayIcon);
   tray.setToolTip("LMU Lap Tracker");
-  const menu = Menu.buildFromTemplate([
+  rebuildTrayMenu();
+  tray.on("double-click", () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
+  const update = updater.getState();
+  const template = [
     {
       label: "Abrir",
       click: () => {
@@ -1412,6 +1568,17 @@ function createTray() {
         }
       },
     },
+  ];
+  if (update.status === "downloaded") {
+    template.push({
+      label: `Reiniciar e atualizar (v${update.version ?? "?"})`,
+      click: () => {
+        isQuitting = true;
+        updater.install();
+      },
+    });
+  }
+  template.push(
     { type: "separator" },
     {
       label: "Sair",
@@ -1419,15 +1586,9 @@ function createTray() {
         isQuitting = true;
         app.quit();
       },
-    },
-  ]);
-  tray.setContextMenu(menu);
-  tray.on("double-click", () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
     }
-  });
+  );
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
 // ── DB path ─────────────────────────────────────────────
@@ -1479,6 +1640,7 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
+  updater.init({ log: pushLog, onState: onUpdateState });
 
   // Inicializa overlay (cria a janela transparente in-game escondida).
   // Usa mesmo build do renderer via hash route #/overlay.

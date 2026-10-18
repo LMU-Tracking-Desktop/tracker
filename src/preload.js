@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("api", {
     return () => ipcRenderer.removeListener("tracker-log", listener);
   },
   getLogBuffer: () => ipcRenderer.invoke("tracker-log-buffer"),
+  openLogsFolder: () => ipcRenderer.invoke("logs.openFolder"),
   getLmuStatus: () => ipcRenderer.invoke("lmu.status"),
   onLmuStatusChange: (callback) => {
     const listener = (_e, payload) => callback(payload);
@@ -41,12 +42,21 @@ contextBridge.exposeInMainWorld("api", {
   getListagem: (filter) => ipcRenderer.invoke("listagem.data", filter),
   getDashboard: (filter) => ipcRenderer.invoke("dashboard.data", filter),
   analyzeErrors: (filter) => ipcRenderer.invoke("errors.analyze", filter),
+  analyzeCoach: (filter) => ipcRenderer.invoke("coach.analyze", filter),
   confirm: (opts) => ipcRenderer.invoke("ui.confirm", opts),
   getConfig: () => ipcRenderer.invoke("config.get"),
   setConfig: (partial) => ipcRenderer.invoke("config.set", partial),
   getAppVersion: () => ipcRenderer.invoke("app.version"),
   getAutoStart: () => ipcRenderer.invoke("app.getAutoStart"),
   setAutoStart: (enabled) => ipcRenderer.invoke("app.setAutoStart", enabled),
+  getUpdateState: () => ipcRenderer.invoke("update.getState"),
+  checkForUpdate: () => ipcRenderer.invoke("update.check"),
+  installUpdate: () => ipcRenderer.invoke("update.install"),
+  onUpdateState: (cb) => {
+    const listener = (_e, payload) => cb(payload);
+    ipcRenderer.on("update-state", listener);
+    return () => ipcRenderer.removeListener("update-state", listener);
+  },
 
   // ── Overlay ─────────────────────────────────────────────
   // App principal (Sidebar + tela /overlays): controle e config.

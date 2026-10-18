@@ -13,6 +13,12 @@ const sm = require("./lmu_sm");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Ticks seguidos (poll de 250ms) que uma mudanca de pista/sessao/carro precisa
+// durar antes de virar sessao nova no banco.
+const NEW_SESSION_CONFIRM_TICKS = 3;
+// Sem mCurrentET mudando por esse tempo, reabre o mapeamento da shared memory.
+const STALE_REOPEN_MS = 5000;
+
 function sessionTypeFromCode(code) {
   if (code === 0) return "testday";
   if (code >= 1 && code <= 4) return "practice";
@@ -22,12 +28,26 @@ function sessionTypeFromCode(code) {
   return "practice";
 }
 
-// ── LMU REST API (one-shot por sessao) ──────────────────
+// ── LMU REST API (one-shot por carro) ───────────────────
+
+// getAllVehicles devolve a lista inteira de carros/liveries do jogo — pesado
+// pro LMU responder e bloqueia o loop do tracker enquanto espera. Cacheia o
+// resultado por livery: no maximo 1 chamada por carro enquanto o app roda.
+const vehicleInfoCache = new Map();
 
 async function fetchVehicleInfo(liveryName) {
+  if (vehicleInfoCache.has(liveryName)) return vehicleInfoCache.get(liveryName);
+  const info = await requestVehicleInfo(liveryName);
+  // So cacheia sucesso: se o REST falhou (jogo carregando), tenta de novo
+  // na proxima sessao.
+  if (info) vehicleInfoCache.set(liveryName, info);
+  return info;
+}
+
+async function requestVehicleInfo(liveryName) {
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 5000);
+    const t = setTimeout(() => ctrl.abort(), 3000);
     const resp = await fetch(
       "http://localhost:6397/rest/sessions/getAllVehicles",
       { signal: ctrl.signal, headers: { Connection: "close" } }
@@ -36,7 +56,8 @@ async function fetchVehicleInfo(liveryName) {
     if (!resp.ok) return null;
     const data = await resp.json();
     const entry = data.find((v) => v.desc === liveryName);
-    if (!entry) return null;
+    // Livery nao listada: resposta valida, cacheia pra nao perguntar de novo.
+    if (!entry) return { manufacturer: null };
     return { manufacturer: entry.manufacturer || null };
   } catch {
     return null;
@@ -172,6 +193,9 @@ async function runTracker({
   // se dados nunca chegarem (lap genuinamente sem tempo, DNF, etc).
   let pendingLapNumber = -1;
   let pendingRetries = 0;
+  let newSessionStreak = 0;
+  let lastSeenET = null;
+  let lastFreshAt = Date.now();
 
   // Buffers pro loop de sampling de inputs (throttle/brake/steering/etc)
   let sampleBucketLap = -1;
@@ -191,6 +215,9 @@ async function runTracker({
     while (!shouldStop()) {
       await sleep(SAMPLE_MS);
       const snap = smHandle ? sm.readSnapshot(smHandle) : null;
+      // Com handle aberto, null = copia inconsistente (LMU escrevendo):
+      // so pula o tick, sem esconder a overlay.
+      if (smHandle && !snap) continue;
       if (!snap || !snap.player || !snap.telemetry) {
         // Sem dados de jogador (jogo fechado, no menu, ou saiu da partida):
         // notifica overlay com frame inativo pra ele esconder. Sem isso,
@@ -316,285 +343,334 @@ async function runTracker({
 
   log("\n[...] Aguardando Le Mans Ultimate...");
 
+  // Qualquer excecao aqui dentro antes matava o tracker ate reabrir o app
+  // (status seguia ON e a overlay funcionando, mas nenhuma volta era salva).
+  // Agora loga e retoma o loop com o estado atual.
+  let lastLoopError = null;
+  let lastLoopErrorAt = 0;
   while (!shouldStop()) {
-    await sleep(pollMs);
-
-    if (!smHandle) smHandle = sm.open();
-
-    if (!smHandle) {
-      if (!waitingForLmu) {
-        log("[...] LMU desconectado. Aguardando...");
-        waitingForLmu = true;
-        sessionId = null;
-        lastLapNumber = -1;
-        lastTrack = null;
-        emitStatus(false);
-      }
-      continue;
-    }
-
-    const snap = sm.readSnapshot(smHandle);
-    if (!snap) continue;
-
-    if (snap.telemetry) lastTelemetry = snap.telemetry;
-    const playerTelem = snap.telemetry || lastTelemetry;
-
-    // So consideramos "conectado" quando ja temos player carregado.
-    // LMU_Data existe mesmo com LMU no menu — mas sem player decode falha.
-    if (waitingForLmu && snap.player) {
-      log("[OK] LMU conectado!");
-      const p0 = snap.player;
-      log(
-        `[INIT] estado inicial: mTotalLaps=${p0.mTotalLaps} mLapDist=${p0.mLapDist?.toFixed?.(1) ?? "?"}m track="${snap.scoring?.mTrackName}"`
-      );
-      waitingForLmu = false;
-      emitStatus(true);
-    }
-
-    const player = snap.player;
-    if (!player) continue;
-
-    const track = snap.scoring.mTrackName || "Unknown";
-    const sessionType = sessionTypeFromCode(snap.scoring.mSession);
-    const car = player.mVehicleName || "Unknown";
-    const carClass = player.mVehicleClass || "Unknown";
-    const lapNumber = player.mTotalLaps;
-    const lastLapTime = player.mLastLapTime;
-    const bestSector1 = player.mLastSector1;
-    const bestSector2 = player.mLastSector2;
-    const lapInvalid = player.mCountLapFlag === 0;
-
-    const fuel = playerTelem ? playerTelem.mFuel : 0;
-    const fuelCapacity = playerTelem ? playerTelem.mFuelCapacity : 0;
-
-    let sector3 = 0;
-    if (lastLapTime > 0 && bestSector1 > 0 && bestSector2 > 0) {
-      sector3 = lastLapTime - bestSector1 - bestSector2;
-    }
-
-    // Detecta reset do LMU (game crash/reopen, restart de sessao, etc).
-    // Se mCurrentET caiu drasticamente, a sessao do LMU foi reiniciada.
-    // Sem isso, o tracker pode continuar anexando voltas novas na sessao antiga
-    // e sobrescrever laps via upsert (sessionId_lapNumber).
-    const currentET = snap.scoring.mCurrentET;
-    if (
-      lastCurrentET != null &&
-      typeof currentET === "number" &&
-      currentET < lastCurrentET - 10
-    ) {
-      log(
-        `[...] LMU reiniciou a sessao (ET ${lastCurrentET.toFixed(1)}s → ${currentET.toFixed(1)}s). Resetando estado.`
-      );
-      sessionId = null;
-      lastLapNumber = -1;
-      lastTrack = null;
-      lastSessionType = null;
-      lastCar = null;
-      lastLapFuel = null;
-      lastImpactETBaseline = 0;
-    }
-    lastCurrentET = currentET;
-
-    const inRealtime = snap.scoring.mInRealtime === true;
-    const isNewSession =
-      inRealtime &&
-      (track !== lastTrack ||
-        sessionType !== lastSessionType ||
-        car !== lastCar ||
-        (lastLapNumber >= 0 && lapNumber < lastLapNumber)) &&
-      track &&
-      track !== "Unknown";
-
-    if (isNewSession) {
-      lastTrack = track;
-      lastSessionType = sessionType;
-      lastCar = car;
-      lastLapNumber = -1;
-      lastLapFuel = null;
-      lastImpactETBaseline = playerTelem?.mLastImpactET ?? 0;
-      sessionId = null;
-
-      const vehInfo = await fetchVehicleInfo(car);
-      const carName = (vehInfo && vehInfo.manufacturer) || car;
-
-      log(
-        `\n[NOVA SESSAO] ${track} | ${carName} (${carClass}) | ${sessionType.toUpperCase()}`
-      );
-      try {
-        const result = await createSession(prisma, {
-          username: cfg.username,
-          track,
-          car: carName,
-          carClass,
-          type: sessionType,
-        });
-        sessionId = result.id;
-        log(`  Session ID: ${sessionId}`);
-      } catch (e) {
-        log(`  [ERRO DB] ao criar sessao: ${e.message}`);
-      }
-    }
-
-    // Detecta reabastecimento (ida ao box) pra fuelUsed nao ficar negativo
-    if (lastLapFuel !== null && fuel > lastLapFuel) {
-      lastLapFuel = fuel;
-    }
-
-    // Nova volta completada
-    if (lapNumber > lastLapNumber && lastLapNumber >= 0 && sessionId) {
-      const hasLapTime = lastLapTime > 0;
-      const hasAnyData = hasLapTime || bestSector1 > 0 || bestSector2 > 0;
-      const isRace = sessionType === "race";
-      // Salva posicao na classe em corrida E qualy. Em qualy a posicao no
-      // fim da sessao = lugar no grid pela melhor volta — util de saber.
-      const savePosition = isRace || sessionType === "qualifying";
-
-      // Retenta se:
-      //  (a) nao-corrida sem dados (rF2 lag em mLastLapTime), OU
-      //  (b) sampler ainda nao flushou os samples dessa volta (main loop beat
-      //      sampler — bug especialmente ruim em voltas invalidadas porque a
-      //      sem telemetria acabava sendo aceita).
-      const needData = !isRace && !hasAnyData;
-      const samplesReady = completedSamplesByLap.has(lapNumber);
-      // So espera samples se sampler ainda ta coletando muito (currentSamples
-      // grande = sampler tem dados pra flushar, so nao foi ainda). Se
-      // currentSamples pequeno, lap foi curta/sampler atrasou — nao vale esperar.
-      const samplerHasPending = currentSamples.length > 50;
-      const shouldWaitSamples = !samplesReady && samplerHasPending;
-
-      if (needData || shouldWaitSamples) {
-        if (pendingLapNumber === lapNumber) {
-          pendingRetries++;
-        } else {
-          pendingLapNumber = lapNumber;
-          pendingRetries = 1;
-        }
-        if (pendingRetries <= 20) {
-          log(
-            `[SAVE] lap ${lapNumber} aguardando (retry ${pendingRetries}/20) — needData=${needData} waitSamples=${shouldWaitSamples} currentSamples=${currentSamples.length}`
-          );
-          continue; // nao avanca lastLapNumber, retenta
-        }
-        log(`[SAVE] lap ${lapNumber} timeout — salvando assim mesmo`);
+    try {
+      await mainLoop();
+    } catch (e) {
+      const msg = e?.stack || e?.message || String(e);
+      // Mesmo erro em sequencia: loga no maximo 1x a cada 30s.
+      if (msg !== lastLoopError || Date.now() - lastLoopErrorAt > 30000) {
+        log(`[ERRO TRACKER] ${msg}`);
+        log("[...] Retomando o tracker em 1s");
+        lastLoopError = msg;
+        lastLoopErrorAt = Date.now();
       }
       pendingLapNumber = -1;
       pendingRetries = 0;
-
-      {
-        const round = (n, p) => Number(n.toFixed(p));
-
-        let lapData;
-        let tyreWearAvg = 0;
-        if (playerTelem && playerTelem.mWheels) {
-          tyreWearAvg =
-            playerTelem.mWheels.reduce((s, w) => s + (w.mWear || 0), 0) / 4;
-        }
-        const fuelUsed =
-          lastLapFuel !== null && lastLapFuel > fuel ? lastLapFuel - fuel : 0;
-
-        // Detecta contato nessa volta: compara o timestamp do ultimo impacto
-        // com a baseline do inicio da volta. Se subiu, houve toque.
-        const currentImpactET = playerTelem?.mLastImpactET ?? 0;
-        const hasTouch = currentImpactET > lastImpactETBaseline;
-        lastImpactETBaseline = currentImpactET;
-
-        // Pega as amostras coletadas pelo loop de 20Hz, se existirem pra essa volta
-        let telemetryJson = null;
-        const mapKeys = [...completedSamplesByLap.keys()].join(",") || "vazio";
-        log(
-          `[SAVE] tentando salvar lap ${lapNumber} (lastLapNumber=${lastLapNumber}) | map=[${mapKeys}] | currentSamples=${currentSamples.length}`
-        );
-        const samplesForLap = completedSamplesByLap.get(lapNumber);
-        if (samplesForLap && samplesForLap.length >= 3) {
-          telemetryJson = JSON.stringify(samplesForLap);
-          log(
-            `[SAVE] ✓ telemetria OK (${samplesForLap.length} samples, ${Math.round(telemetryJson.length / 1024)}KB)`
-          );
-          completedSamplesByLap.delete(lapNumber);
-        } else {
-          log(`[SAVE] ✗ SEM TELEMETRIA pra lap ${lapNumber} (map=[${mapKeys}])`);
-        }
-
-        if (hasLapTime) {
-          lapData = {
-            lapNumber,
-            lapTime: round(lastLapTime, 6),
-            isValid: !lapInvalid,
-            sector1: bestSector1 > 0 ? round(bestSector1, 6) : null,
-            sector2: bestSector2 > 0 ? round(bestSector2, 6) : null,
-            sector3: sector3 > 0 ? round(sector3, 6) : null,
-            fuelUsed: round(fuelUsed, 3),
-            fuelRemaining: round(fuel, 3),
-            fuelCapacity: round(fuelCapacity, 3),
-            energyUsed: null,
-            tyreWearAvg: tyreWearAvg > 0 ? round(tyreWearAvg, 6) : null,
-            // Posicao na classe (1-based). Em corridas single-class
-            // equivale ao mPlace; em multiclass mostra o numero que o
-            // driver realmente espera ver. Calculado lazy aqui (1x por
-            // volta) pra nao iterar veiculos a 30Hz.
-            position: savePosition
-              ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
-              : null,
-            hasTouch,
-            telemetryJson,
-          };
-          lastLapFuel = fuel;
-        } else {
-          lapData = {
-            lapNumber,
-            lapTime: 0,
-            isValid: false,
-            sector1: 0,
-            sector2: 0,
-            sector3: 0,
-            fuelUsed: round(fuelUsed, 3),
-            fuelRemaining: round(fuel, 3),
-            fuelCapacity: round(fuelCapacity, 3),
-            energyUsed: null,
-            tyreWearAvg: tyreWearAvg > 0 ? round(tyreWearAvg, 6) : null,
-            // Posicao na classe (1-based). Em corridas single-class
-            // equivale ao mPlace; em multiclass mostra o numero que o
-            // driver realmente espera ver. Calculado lazy aqui (1x por
-            // volta) pra nao iterar veiculos a 30Hz.
-            position: savePosition
-              ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
-              : null,
-            hasTouch,
-            telemetryJson,
-          };
-          lastLapFuel = fuel;
-        }
-
-        if (hasLapTime) {
-          const status = lapData.isValid ? "VALIDA" : "INVALIDA";
-          const mins = Math.floor(lastLapTime / 60);
-          const secs = (lastLapTime % 60).toFixed(3).padStart(6, "0");
-          log(`\n  [VOLTA ${lapNumber}] ${mins}:${secs} (${status})`);
-        } else {
-          log(`\n  [VOLTA ${lapNumber}] SEM TEMPO (corrida - zerada)`);
-        }
-
-        try {
-          await saveLap(prisma, sessionId, lapData, log);
-          log(`    [OK] Salvo no banco`);
-          // Notifica overlay pra recarregar refLap (caso essa tenha sido a
-          // volta mais rapida que a referencia atual)
-          try {
-            onLapSaved?.();
-          } catch (e) {
-            log(`    [ERRO onLapSaved] ${e.message}`);
-          }
-        } catch (e) {
-          log(`    [ERRO DB] ${e.message}`);
-        }
-      }
+      await sleep(1000);
     }
-
-    lastLapNumber = lapNumber;
   }
 
   if (smHandle) sm.close(smHandle);
   log("\n[FIM] Tracker encerrado.");
+
+  async function mainLoop() {
+    while (!shouldStop()) {
+      await sleep(pollMs);
+
+      if (!smHandle) smHandle = sm.open();
+
+      if (!smHandle) {
+        if (!waitingForLmu) {
+          log("[...] LMU desconectado. Aguardando...");
+          waitingForLmu = true;
+          sessionId = null;
+          lastLapNumber = -1;
+          lastTrack = null;
+          emitStatus(false);
+        }
+        continue;
+      }
+
+      const snap = sm.readSnapshot(smHandle);
+
+      // Handle velho: se o mCurrentET nao muda ha um tempo (jogo fechou,
+      // crashou, ou so pausado/menu), fecha e reabre o mapeamento. Com o jogo
+      // vivo reabre na hora e nada muda; com o jogo fechado o open falha e
+      // o proximo tick marca desconectado. Antes o handle ficava preso e o app
+      // mostrava ON lendo dado congelado pra sempre.
+      const now = Date.now();
+      if (snap && snap.scoring.mCurrentET !== lastSeenET) {
+        lastSeenET = snap.scoring.mCurrentET;
+        lastFreshAt = now;
+      } else if (now - lastFreshAt > STALE_REOPEN_MS) {
+        sm.close(smHandle);
+        smHandle = sm.open();
+        lastFreshAt = now;
+        continue;
+      }
+      if (!snap) continue;
+
+      if (snap.telemetry) lastTelemetry = snap.telemetry;
+      const playerTelem = snap.telemetry || lastTelemetry;
+
+      // So consideramos "conectado" quando ja temos player carregado.
+      // LMU_Data existe mesmo com LMU no menu — mas sem player decode falha.
+      if (waitingForLmu && snap.player) {
+        log("[OK] LMU conectado!");
+        const p0 = snap.player;
+        log(
+          `[INIT] estado inicial: mTotalLaps=${p0.mTotalLaps} mLapDist=${p0.mLapDist?.toFixed?.(1) ?? "?"}m track="${snap.scoring?.mTrackName}"`
+        );
+        waitingForLmu = false;
+        emitStatus(true);
+      }
+
+      const player = snap.player;
+      if (!player) continue;
+
+      const track = snap.scoring.mTrackName || "Unknown";
+      const sessionType = sessionTypeFromCode(snap.scoring.mSession);
+      const car = player.mVehicleName || "Unknown";
+      const carClass = player.mVehicleClass || "Unknown";
+      const lapNumber = player.mTotalLaps;
+      const lastLapTime = player.mLastLapTime;
+      const bestSector1 = player.mLastSector1;
+      const bestSector2 = player.mLastSector2;
+      const lapInvalid = player.mCountLapFlag === 0;
+
+      const fuel = playerTelem ? playerTelem.mFuel : 0;
+      const fuelCapacity = playerTelem ? playerTelem.mFuelCapacity : 0;
+
+      let sector3 = 0;
+      if (lastLapTime > 0 && bestSector1 > 0 && bestSector2 > 0) {
+        sector3 = lastLapTime - bestSector1 - bestSector2;
+      }
+
+      // Detecta reset do LMU (game crash/reopen, restart de sessao, etc).
+      // Se mCurrentET caiu drasticamente, a sessao do LMU foi reiniciada.
+      // Sem isso, o tracker pode continuar anexando voltas novas na sessao antiga
+      // e sobrescrever laps via upsert (sessionId_lapNumber).
+      const currentET = snap.scoring.mCurrentET;
+      if (
+        lastCurrentET != null &&
+        typeof currentET === "number" &&
+        currentET < lastCurrentET - 10
+      ) {
+        log(
+          `[...] LMU reiniciou a sessao (ET ${lastCurrentET.toFixed(1)}s → ${currentET.toFixed(1)}s). Resetando estado.`
+        );
+        sessionId = null;
+        lastLapNumber = -1;
+        lastTrack = null;
+        lastSessionType = null;
+        lastCar = null;
+        lastLapFuel = null;
+        lastImpactETBaseline = 0;
+      }
+      lastCurrentET = currentET;
+
+      const inRealtime = snap.scoring.mInRealtime === true;
+      const isNewSession =
+        inRealtime &&
+        (track !== lastTrack ||
+          sessionType !== lastSessionType ||
+          car !== lastCar ||
+          (lastLapNumber >= 0 && lapNumber < lastLapNumber)) &&
+        track &&
+        track !== "Unknown";
+
+      // So abre sessao nova se a mudanca se mantiver por alguns ticks seguidos.
+      // Um tick com dado lixo (pista/carro/volta) partia a sessao no meio.
+      // Pula o tick inteiro enquanto confirma pra nao avancar lastLapNumber
+      // (senao a queda do numero da volta "some" antes de confirmar).
+      newSessionStreak = isNewSession ? newSessionStreak + 1 : 0;
+      if (isNewSession && newSessionStreak < NEW_SESSION_CONFIRM_TICKS) continue;
+
+      if (isNewSession) {
+        newSessionStreak = 0;
+        lastTrack = track;
+        lastSessionType = sessionType;
+        lastCar = car;
+        lastLapNumber = -1;
+        lastLapFuel = null;
+        lastImpactETBaseline = playerTelem?.mLastImpactET ?? 0;
+        sessionId = null;
+
+        const vehInfo = await fetchVehicleInfo(car);
+        const carName = (vehInfo && vehInfo.manufacturer) || car;
+
+        log(
+          `\n[NOVA SESSAO] ${track} | ${carName} (${carClass}) | ${sessionType.toUpperCase()}`
+        );
+        try {
+          const result = await createSession(prisma, {
+            username: cfg.username,
+            track,
+            car: carName,
+            carClass,
+            type: sessionType,
+          });
+          sessionId = result.id;
+          log(`  Session ID: ${sessionId}`);
+        } catch (e) {
+          log(`  [ERRO DB] ao criar sessao: ${e.message}`);
+        }
+      }
+
+      // Detecta reabastecimento (ida ao box) pra fuelUsed nao ficar negativo
+      if (lastLapFuel !== null && fuel > lastLapFuel) {
+        lastLapFuel = fuel;
+      }
+
+      // Nova volta completada
+      if (lapNumber > lastLapNumber && lastLapNumber >= 0 && sessionId) {
+        const hasLapTime = lastLapTime > 0;
+        const hasAnyData = hasLapTime || bestSector1 > 0 || bestSector2 > 0;
+        const isRace = sessionType === "race";
+        // Salva posicao na classe em corrida E qualy. Em qualy a posicao no
+        // fim da sessao = lugar no grid pela melhor volta — util de saber.
+        const savePosition = isRace || sessionType === "qualifying";
+
+        // Retenta se:
+        //  (a) nao-corrida sem dados (rF2 lag em mLastLapTime), OU
+        //  (b) sampler ainda nao flushou os samples dessa volta (main loop beat
+        //      sampler — bug especialmente ruim em voltas invalidadas porque a
+        //      sem telemetria acabava sendo aceita).
+        const needData = !isRace && !hasAnyData;
+        const samplesReady = completedSamplesByLap.has(lapNumber);
+        // So espera samples se sampler ainda ta coletando muito (currentSamples
+        // grande = sampler tem dados pra flushar, so nao foi ainda). Se
+        // currentSamples pequeno, lap foi curta/sampler atrasou — nao vale esperar.
+        const samplerHasPending = currentSamples.length > 50;
+        const shouldWaitSamples = !samplesReady && samplerHasPending;
+
+        if (needData || shouldWaitSamples) {
+          if (pendingLapNumber === lapNumber) {
+            pendingRetries++;
+          } else {
+            pendingLapNumber = lapNumber;
+            pendingRetries = 1;
+          }
+          if (pendingRetries <= 20) {
+            log(
+              `[SAVE] lap ${lapNumber} aguardando (retry ${pendingRetries}/20) — needData=${needData} waitSamples=${shouldWaitSamples} currentSamples=${currentSamples.length}`
+            );
+            continue; // nao avanca lastLapNumber, retenta
+          }
+          log(`[SAVE] lap ${lapNumber} timeout — salvando assim mesmo`);
+        }
+        pendingLapNumber = -1;
+        pendingRetries = 0;
+
+        {
+          const round = (n, p) => Number(n.toFixed(p));
+
+          let lapData;
+          let tyreWearAvg = 0;
+          if (playerTelem && playerTelem.mWheels) {
+            tyreWearAvg =
+              playerTelem.mWheels.reduce((s, w) => s + (w.mWear || 0), 0) / 4;
+          }
+          const fuelUsed =
+            lastLapFuel !== null && lastLapFuel > fuel ? lastLapFuel - fuel : 0;
+
+          // Detecta contato nessa volta: compara o timestamp do ultimo impacto
+          // com a baseline do inicio da volta. Se subiu, houve toque.
+          const currentImpactET = playerTelem?.mLastImpactET ?? 0;
+          const hasTouch = currentImpactET > lastImpactETBaseline;
+          lastImpactETBaseline = currentImpactET;
+
+          // Pega as amostras coletadas pelo loop de 20Hz, se existirem pra essa volta
+          let telemetryJson = null;
+          const mapKeys = [...completedSamplesByLap.keys()].join(",") || "vazio";
+          log(
+            `[SAVE] tentando salvar lap ${lapNumber} (lastLapNumber=${lastLapNumber}) | map=[${mapKeys}] | currentSamples=${currentSamples.length}`
+          );
+          const samplesForLap = completedSamplesByLap.get(lapNumber);
+          if (samplesForLap && samplesForLap.length >= 3) {
+            telemetryJson = JSON.stringify(samplesForLap);
+            log(
+              `[SAVE] ✓ telemetria OK (${samplesForLap.length} samples, ${Math.round(telemetryJson.length / 1024)}KB)`
+            );
+            completedSamplesByLap.delete(lapNumber);
+          } else {
+            log(`[SAVE] ✗ SEM TELEMETRIA pra lap ${lapNumber} (map=[${mapKeys}])`);
+          }
+
+          if (hasLapTime) {
+            lapData = {
+              lapNumber,
+              lapTime: round(lastLapTime, 6),
+              isValid: !lapInvalid,
+              sector1: bestSector1 > 0 ? round(bestSector1, 6) : null,
+              sector2: bestSector2 > 0 ? round(bestSector2, 6) : null,
+              sector3: sector3 > 0 ? round(sector3, 6) : null,
+              fuelUsed: round(fuelUsed, 3),
+              fuelRemaining: round(fuel, 3),
+              fuelCapacity: round(fuelCapacity, 3),
+              energyUsed: null,
+              tyreWearAvg: tyreWearAvg > 0 ? round(tyreWearAvg, 6) : null,
+              // Posicao na classe (1-based). Em corridas single-class
+              // equivale ao mPlace; em multiclass mostra o numero que o
+              // driver realmente espera ver. Calculado lazy aqui (1x por
+              // volta) pra nao iterar veiculos a 30Hz.
+              position: savePosition
+                ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
+                : null,
+              hasTouch,
+              telemetryJson,
+            };
+            lastLapFuel = fuel;
+          } else {
+            lapData = {
+              lapNumber,
+              lapTime: 0,
+              isValid: false,
+              sector1: 0,
+              sector2: 0,
+              sector3: 0,
+              fuelUsed: round(fuelUsed, 3),
+              fuelRemaining: round(fuel, 3),
+              fuelCapacity: round(fuelCapacity, 3),
+              energyUsed: null,
+              tyreWearAvg: tyreWearAvg > 0 ? round(tyreWearAvg, 6) : null,
+              // Posicao na classe (1-based). Em corridas single-class
+              // equivale ao mPlace; em multiclass mostra o numero que o
+              // driver realmente espera ver. Calculado lazy aqui (1x por
+              // volta) pra nao iterar veiculos a 30Hz.
+              position: savePosition
+                ? sm.readClassPlace(smHandle, player.mVehicleClass, player.mPlace)
+                : null,
+              hasTouch,
+              telemetryJson,
+            };
+            lastLapFuel = fuel;
+          }
+
+          if (hasLapTime) {
+            const status = lapData.isValid ? "VALIDA" : "INVALIDA";
+            const mins = Math.floor(lastLapTime / 60);
+            const secs = (lastLapTime % 60).toFixed(3).padStart(6, "0");
+            log(`\n  [VOLTA ${lapNumber}] ${mins}:${secs} (${status})`);
+          } else {
+            log(`\n  [VOLTA ${lapNumber}] SEM TEMPO (corrida - zerada)`);
+          }
+
+          try {
+            await saveLap(prisma, sessionId, lapData, log);
+            log(`    [OK] Salvo no banco`);
+            // Notifica overlay pra recarregar refLap (caso essa tenha sido a
+            // volta mais rapida que a referencia atual)
+            try {
+              onLapSaved?.();
+            } catch (e) {
+              log(`    [ERRO onLapSaved] ${e.message}`);
+            }
+          } catch (e) {
+            log(`    [ERRO DB] ${e.message}`);
+          }
+        }
+      }
+
+      lastLapNumber = lapNumber;
+    }
+  }
 }
 
 function startTracker({ cfg, prisma, log, onStatus, onLive, onLapSaved }) {

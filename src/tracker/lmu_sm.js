@@ -282,6 +282,12 @@ function readSnapshot(h) {
   if (!h) return null;
   RtlCopyMemory(h.buf, h.view, LAYOUT_SIZE);
   const buf = h.buf;
+  // Copia "rasgada" (LMU escrevendo no meio da copia) deixa scoring e
+  // telemetry dessincronizados — o sinal mais barato e mNumVehicles diferente
+  // de activeVehicles (mesmo criterio do TinyPedal/pyLMUSharedMemory).
+  // Descarta o tick: track/carro/volta lixo criavam sessoes falsas.
+  const numVehicles = readLong(buf, SCORING_INFO_OFFSET, SI.mNumVehicles);
+  if (numVehicles !== readUInt8(buf, TELEMETRY_OFFSET, 0)) return null;
   const scoring = decodeScoringInfo(buf);
   if (
     !scoring.mTrackName ||

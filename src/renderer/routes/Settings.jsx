@@ -268,6 +268,12 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Atualizacao */}
+        <div style={sectionStyle}>
+          <div style={sectionHeaderStyle}>{sectionTitle("Atualização")}</div>
+          <UpdateSection />
+        </div>
+
         {/* Status / About */}
         <div style={sectionStyle}>
           <div style={sectionHeaderStyle}>{sectionTitle("Sistema")}</div>
@@ -311,6 +317,75 @@ export default function Settings() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const UPDATE_TEXT = {
+  disabled: ["Indisponível", "Atualização automática só funciona na versão instalada (não em dev).", "var(--tx-3)"],
+  idle: ["Aguardando", "A primeira checagem roda 30s depois de abrir o app, depois a cada hora.", "var(--tx-2)"],
+  checking: ["Verificando...", "Consultando os releases no GitHub.", "var(--tx-1)"],
+  downloading: ["Baixando", "Nova versão encontrada. Baixando em segundo plano.", "var(--warn)"],
+  downloaded: ["Pronta", "Reinicie quando não estiver em pista. O app volta sozinho na nova versão.", "var(--ok)"],
+  uptodate: ["Atualizado", "Você está na versão mais recente.", "var(--ok)"],
+  error: ["Erro", "Não foi possível verificar. Tenta de novo mais tarde.", "var(--crit)"],
+};
+
+function UpdateSection() {
+  const [state, setState] = useState(null);
+
+  useEffect(() => {
+    window.api?.getUpdateState?.().then((s) => s && setState(s));
+    const off = window.api?.onUpdateState?.((s) => setState(s));
+    return () => off?.();
+  }, []);
+
+  const status = state?.status ?? "disabled";
+  const [label, hint, color] = UPDATE_TEXT[status] ?? UPDATE_TEXT.idle;
+  const canCheck = !["disabled", "checking", "downloading", "downloaded"].includes(status);
+
+  return (
+    <div
+      style={{
+        padding: "var(--pad)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 13, color }}>
+          {label}
+          {status === "downloaded" && state?.version ? ` · v${state.version}` : ""}
+        </span>
+        <span
+          className="mono"
+          style={{ fontSize: 10, letterSpacing: "0.06em", color: "var(--tx-3)" }}
+        >
+          {status === "error" && state?.error ? `${hint} (${state.error})` : hint}
+        </span>
+      </div>
+      {status === "downloaded" ? (
+        <button
+          type="button"
+          className="btn solid"
+          onClick={() => window.api?.installUpdate?.()}
+          style={{ minWidth: 150 }}
+        >
+          REINICIAR E ATUALIZAR
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="btn"
+          disabled={!canCheck}
+          onClick={() => window.api?.checkForUpdate?.()}
+          style={{ opacity: canCheck ? 1 : 0.5, minWidth: 150 }}
+        >
+          VERIFICAR AGORA
+        </button>
+      )}
     </div>
   );
 }
