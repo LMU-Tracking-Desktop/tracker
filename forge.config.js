@@ -20,7 +20,54 @@ const NATIVE_DEPS = [
   "@prisma/debug",
 ];
 
+// Modulos com binario atrelado ao ABI do runtime (nao N-API). koffi usa
+// N-API e serve pra qualquer versao; better-sqlite3 nao.
+const ABI_BOUND_DEPS = ["better-sqlite3"];
+
+// Carrega cada .node empacotado com o Electron do projeto (mesma versao do
+// app). Se o ABI nao bater, o app instalado nem abre o banco — falha o build
+// aqui em vez de publicar um instalador quebrado (aconteceu na v1.0.35).
+function verifyNativeAbi(buildPath) {
+  const { execFileSync } = require("node:child_process");
+  const electronExe = require("electron"); // path do binario do Electron
+  for (const dep of ABI_BOUND_DEPS) {
+    const nodeFile = path.resolve(buildPath, "node_modules", dep, "build", "Release", `${dep.replace(/-/g, "_")}.node`);
+    if (!fs.existsSync(nodeFile)) {
+      throw new Error(`[native-abi] ${dep}: binario nao encontrado em ${nodeFile}`);
+    }
+    try {
+      execFileSync(electronExe, ["-e", "require(process.argv[1])", nodeFile], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        stdio: "pipe",
+      });
+    } catch (e) {
+      const lines = String(e.stderr || e.message).split("\n");
+      const msg = lines.filter((l) => /NODE_MODULE_VERSION|Error:/.test(l)).join(" ").trim() || lines[0];
+      throw new Error(`[native-abi] ${dep} nao carrega no Electron empacotado: ${msg}`);
+    }
+  }
+}
+
 module.exports = {
+  hooks: {
+    // O afterCopy abaixo copia os modulos nativos de ./node_modules como
+    // estao. Se o binario foi compilado pro Node (npm install/ci), o app
+    // quebra — entao recompila pro Electron do projeto antes de empacotar.
+    prePackage: async () => {
+      const { rebuild } = require("@electron/rebuild");
+      await rebuild({
+        buildPath: __dirname,
+        electronVersion: require("electron/package.json").version,
+        onlyModules: ABI_BOUND_DEPS,
+        force: true,
+      });
+    },
+    postPackage: async (_config, { outputPaths }) => {
+      for (const out of outputPaths) {
+        verifyNativeAbi(path.join(out, "resources", "app.asar.unpacked"));
+      }
+    },
+  },
   packagerConfig: {
     asar: {
       unpack: "**/*.{node,dll}",
